@@ -19,7 +19,10 @@ class MapConversions:
         self.resolution = resolution
         ##### YOUR CODE STARTS HERE ##### # noqa: E266
         # TODO Create the array shape in the format (# rows, # columns)
-        self.array_shape = (0, 0)
+        xmin, ymin, xmax, ymax, = boundary
+        Nr = int((ymax - ymin) / resolution)
+        Nc = int((xmax - xmin) / resolution)
+        self.array_shape = (Nr, Nc)
         ##### YOUR CODE ENDS HERE   ##### # noqa: E266
 
     @classmethod
@@ -27,8 +30,15 @@ class MapConversions:
         """Create an object from an OccupancyGrid ROS msg."""
         ##### YOUR CODE STARTS HERE ##### # noqa: E266
         # TODO Extract the boundary and cell resolution from the occupancy grid message
-        boundary = [0, 0, 1, 1]
-        resolution = 1.
+        xmin = msg.info.origin.position.x
+        ymin = msg.info.origin.position.y
+        resolution = msg.info.resolution
+        width = msg.info.width
+        height = msg.info.height
+        
+        xmax = xmin + width * resolution
+        ymax = ymin + height * resolution
+        boundary = [xmin, ymin, xmax, ymax]
         ##### YOUR CODE ENDS HERE   ##### # noqa: E266
         return cls(boundary, resolution)
 
@@ -46,7 +56,9 @@ class MapConversions:
         """
         ##### YOUR CODE STARTS HERE ##### # noqa: E266
         # TODO Convert data in (row, col) format to ind format
-        inds = -np.ones_like(rows)
+        Nr, Nc=self.array_shape
+        valid = (rows >= 0) & (cols >= 00) & (rows < Nr) & (cols < Nc)
+        inds = np.where(valid, rows * Nc + cols, -1)
         ##### YOUR CODE ENDS HERE   ##### # noqa: E266
         return inds
 
@@ -64,8 +76,10 @@ class MapConversions:
         """
         ##### YOUR CODE STARTS HERE ##### # noqa: E266
         # TODO Convert data in ind format to (row, col) format
-        rows = -np.ones_like(inds)
-        cols = -np.ones_like(inds)
+        Nr, Nc = self.array_shape
+        valid = (inds >= 0) & (inds < Nr * Nc)
+        rows = np.where(valid, np.floor_divide(inds, Nc), -1)
+        cols = np.where(valid, np.mod(inds, Nc), -1)
         ##### YOUR CODE ENDS HERE   ##### # noqa: E266
         return rows, cols
 
@@ -84,8 +98,17 @@ class MapConversions:
         """
         ##### YOUR CODE STARTS HERE ##### # noqa: E266
         # TODO Convert data in (x, y) format to (row, col) format
-        rows = -np.ones_like(x)
-        cols = -np.ones_like(y)
+        xmin, ymin, xmax, ymax = self.boundary
+        s = self.resolution
+
+        r = np.floor((y - ymin) / s).astype(int)
+        c = np.floor((x - xmin) / s).astype(int)
+
+        Nr, Nc = self.array_shape
+        valid = (x >= xmin) & (x < xmax) & (y >= ymin) & (y < ymax)
+        r[~valid] = -1
+        c[~valid] = -1
+        rows, cols = r, c
         ##### YOUR CODE ENDS HERE   ##### # noqa: E266
         return rows, cols
 
@@ -104,8 +127,13 @@ class MapConversions:
         """
         ##### YOUR CODE STARTS HERE ##### # noqa: E266
         # TODO Convert data in (row, col) format to (x, y) format
-        x = np.nan * np.ones_like(rows)
-        y = np.nan * np.ones_like(cols)
+        xmin, ymin, xmax, ymax = self.boundary
+        s = self.resolution
+        Nr, Nc = self.array_shape
+
+        valid = (rows >= 0) & (rows < Nr) & (cols >= 0) & (cols < Nc)
+        x = np.where(valid, xmin + s * (cols + 0.5), np.nan)
+        y = np.where(valid, ymin + s * (rows + 0.5), np.nan)
         ##### YOUR CODE ENDS HERE   ##### # noqa: E266
         return x, y
 
