@@ -21,9 +21,15 @@ class OccupancyGridMap(MapConversions):
         """Create an object from an OccupancyGrid msg."""
         ##### YOUR CODE STARTS HERE ##### # noqa: E266
         # TODO Extract boundary, resolution, and frame_id from input message
-        boundary = [0., 0., 1., 1.]
-        resolution = 1.
-        frame_id = 'frame'
+        resolution =float(msg.info.resolution)
+        xmin = float(msg.info.origin.position.x)
+        ymin = float(msg.info.origin.position.y)
+        width = int(msg.info.width)
+        height = int(msg.info.height)
+        xmax = xmin + width * resolution
+        ymax = ymin + height * resolution
+        boundary = [xmin, ymin, xmax, ymax]
+        frame_id = msg.header.frame_id
         ##### YOUR CODE ENDS HERE   ##### # noqa: E266
 
         # Initialize object
@@ -31,7 +37,9 @@ class OccupancyGridMap(MapConversions):
 
         ##### YOUR CODE STARTS HERE ##### # noqa: E266
         # TODO Update data array in ogm, based on conventions in the __init__ method
-        pass
+        arr = np.array(msg.data, dtype=np.int16)
+        arr = arr.clip(arr, -1, 100).astype(np.int8)
+        ogm.data = arr.reshape(ogm.array_shape)
         ##### YOUR CODE ENDS HERE   ##### # noqa: E266
         return ogm
 
@@ -44,7 +52,22 @@ class OccupancyGridMap(MapConversions):
         """
         ##### YOUR CODE STARTS HERE ##### # noqa: E266
         # TODO Fill in all the cells that overlap with the block
-        pass
+        xmin_b, ymin_b, xmax_b, ymax_b = map(float, block)
+        xmin, ymin, xmax, ymax = self.boundary
+        s = self.resolution
+        nrows, ncols = self.array_shape
+
+        eps = 1e-9
+        r0 = int(np.floor((ymin_b - ymin) / s + eps))
+        r1 = int(np.ceil ((ymax_b - ymin) / s - eps)) - 1
+        c0 = int(np.floor((xmin_b - xmin) / s + eps))
+        c1 = int(np.ceil ((xmax_b - xmin) / s - eps)) - 1
+
+        r0 = max(0, r0); r1 = min(nrows - 1, r1)
+        c0 = max(0, c0); c1 = min(ncols - 1, c1)
+
+        if r0 <= r1 and c0 <= c1:
+            self.data[r0:r1+1, c0:c1+1] = 100
         ##### YOUR CODE ENDS HERE   ##### # noqa: E266
 
     def to_msg(self, time: Time) -> OccupancyGrid:
@@ -59,7 +82,24 @@ class OccupancyGridMap(MapConversions):
         msg = OccupancyGrid()
         ##### YOUR CODE STARTS HERE ##### # noqa: E266
         # TODO Fill in all the fields of the msg using the data from the class
-        pass
+        msg.header.stamp = time.to_msg()
+        msg.header.frame_id = self.frame_id
+
+        msg.info.resolution = float(self.resolution)
+        msg.info.width = int(self.array_shape[1])
+        msg.info.height = int(self.array_shape[0])
+
+        xmin, ymin, xmax, ymax = self.boundary
+        msg.info.origin.position.x = float(xmin)
+        msg.info.origin.position.y = float(ymin)
+        msg.info.origin.position.z = 0.0
+        msg.info.origin.orientation.x = 0.0
+        msg.info.origin.orientation.y = 0.0
+        msg.info.origin.orientation.z = 0.0
+        msg.info.origin.orientation.w = 1.0
+
+        clipped = np.clip(self.data, -1, 100).astype(np.int8)
+        msg.data = clipped.reshape(-1).tolist()
         ##### YOUR CODE ENDS HERE   ##### # noqa: E266
         return msg
 
@@ -75,7 +115,12 @@ class OccupancyGridMap(MapConversions):
         """
         ##### YOUR CODE STARTS HERE ##### # noqa: E266
         # TODO Check for occupancy in the map based on the input type
-        occupied = np.zeros_like(x, dtype='bool')
+        rows, cols = self.xy2rc(x, y)
+        nrows, ncols = self.array_shape
+        valid = (rows >= 0) & (cols >= 0) & (rows < nrows) & (cols < ncols)
+
+        occupied = np.zeros_like(x, dtype=bool)
+        occupied[valid] = self.data[rows[valid], cols[valid]] >= 50
         ##### YOUR CODE ENDS HERE   ##### # noqa: E266
         return occupied
 
@@ -93,6 +138,17 @@ class OccupancyGridMap(MapConversions):
             raise Exception(f'Requested format {format} invalid, must be xy, rc, or ind')
         ##### YOUR CODE STARTS HERE ##### # noqa: E266
         # TODO Check for occupancy in the map based on the input type
-        locations = np.zeros(2)
+        nrows, ncols = self.array_shape
+        mask = self.data >= 50
+
+        r, c = np.where(mask)
+
+        if format == 'rc':
+            locations = np.vstack((r, c)).T
+        elif format == 'ind':
+            locations = (r * ncols + c).astype(int)
+        else: 
+            x, y = self.sub2xy(r, c)
+            locations = np.vstack((x, y)).T
         ##### YOUR CODE ENDS HERE   ##### # noqa: E266
         return locations
