@@ -3,56 +3,34 @@
          default="$(env TURTLEBOT3_MODEL)"
          description="model type [burger, waffle, waffle_pi]"/>
     <arg name="initial_pose_x"
-         default="0.0"
+         default="-2.0"
          description="initial x position of the robot"/>
     <arg name="initial_pose_y"
-         default="0.0"
+         default="-0.5"
          description="initial y position of the robot"/>
-    <arg name="initial_pose_a"
-         default="0.0"
-         description="initial angle of the robot"/>
-    <arg name="joint_noise_std"
-         default="0.0"
-         description="standard deviation of wheel noise per second"/>
-    <arg name="lidar_noise_std"
-         default="0.0"
-         description="Standard deviation of lidar measurements in meter"/>
-    <arg name="sim_namespace"
-         default="ground_truth/"
-         description="namespace for `real` simulated robot" />
-    <arg name="map_filename"
-         default="$(find-pkg-share occupancy_grid)/maps/levine-4.yaml"
-         description="YAML file for the map"/>
     <arg name="map_conversions_implemented"
          default="True"
          description="Whether map conversions have been implemented"/>
     <arg name="use_sim_time"
-         default="False"
+         default="True"
          description="Whether to use simulation time"/>
 
     <!-- Map -->
     <include file="$(find-pkg-share occupancy_grid)/launch/map_server.py">
-        <arg name="map_filename" value="$(var map_filename)"/>
+        <arg name="map_filename" value="$(find-pkg-share occupancy_grid)/maps/turtlebot3_world.yaml"/>
         <arg name="delay" value="5.0"/>
         <arg name="use_sim_time" value="$(var use_sim_time)"/>
     </include>
 
-     <!-- Robot file -->
-     <let name="urdf"
-          value="$(find-pkg-share turtlebot3_description)/urdf/turtlebot3_$(env TURTLEBOT3_MODEL).urdf"/>
+    <!-- Robot file -->
+    <let name="urdf"
+         value="$(find-pkg-share turtlebot3_description)/urdf/turtlebot3_$(env TURTLEBOT3_MODEL).urdf"/>
 
     <!-- Simulated Robot -->
-    <group>
-        <push-ros-namespace namespace="$(var sim_namespace)"/>
-        <include file="$(find-pkg-share mee4411_simulation)/launch/tb3_simulation.xml">
-            <arg name="sim_namespace"   value="$(var sim_namespace)" />
-            <arg name="initial_pose_x"  value="$(var initial_pose_x)" />
-            <arg name="initial_pose_y"  value="$(var initial_pose_y)" />
-            <arg name="initial_pose_a"  value="$(var initial_pose_a)" />
-            <arg name="joint_noise_std" value="$(var joint_noise_std)" />
-            <arg name="lidar_noise_std" value="$(var lidar_noise_std)" />
-        </include>
-    </group>
+    <include file="$(find-pkg-share turtlebot3_gazebo)/launch/turtlebot3_world.launch.py">
+        <arg name="x_pose" value="$(var initial_pose_x)"/>
+        <arg name="y_pose" value="$(var initial_pose_y)"/>
+    </include>
 
     <!-- Transformations -->
     <node name="robot_state_publisher"
@@ -61,7 +39,7 @@
           output="screen">
         <param name="publish_frequency" value="50.0" />
         <param name='robot_description' value="$(command 'xacro $(var urdf)')"/>
-        <param name="use_sim_time" value="$(var use_sim_time)"/>
+        <param name="use_sim_time" value="true"/>
     </node>
 
     <!-- Odometry -->
@@ -70,19 +48,18 @@
           exec="turtlebot3_fake_node"
           output="screen">
         <param from="$(find-pkg-share turtlebot3_fake_node)/param/$(env TURTLEBOT3_MODEL).yaml"/>
-        <param name="use_sim_time" value="$(var use_sim_time)"/>
+        <param name="use_sim_time" value="true"/>
     </node>
 
     <!-- Localization -->
     <node name="localization_fake"
           pkg="tf2_ros"
           exec="static_transform_publisher" 
-          args="--x $(var initial_pose_x)
-                --y $(var initial_pose_y)
-                --yaw $(var initial_pose_a)
+          args="--x 0.0
+                --y 0.0
                 --frame-id /map 
                 --child-frame-id /odom" >
-        <param name="use_sim_time" value="$(var use_sim_time)"/>
+        <param name="use_sim_time" value="true"/>
     </node>
 
     <!-- Global planning -->
@@ -99,7 +76,7 @@
     <node name="rviz"
           pkg="rviz2"
           exec="rviz2"
-          args="-d $(find-pkg-share mee4411_simulation)/rviz/mee4411.rviz">
+          args="-d $(find-pkg-share mee4411_simulation)/rviz/gazebo.rviz">
         <param name="use_sim_time" value="$(var use_sim_time)"/>
     </node>
 

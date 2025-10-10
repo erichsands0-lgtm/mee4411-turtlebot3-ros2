@@ -63,13 +63,15 @@ class OccupancyGridMap(MapConversions):
         ##### YOUR CODE ENDS HERE   ##### # noqa: E266
         return msg
 
-    def is_occupied(self, x: np.array, y: np.array) -> bool:
+    def is_occupied(self, x: np.array, y: np.array, *, threshold=50) -> bool:
         """
         Check whether the given cells are occupied.
 
         Inputs:
             x           numpy array of x values
             y           numpy array of y values
+        Optional Inputs:
+            threshold   minimum value to consider a cell occupied (default 50)
         Outputs:
             occupied    np.array of bool values
         """
@@ -79,12 +81,13 @@ class OccupancyGridMap(MapConversions):
         ##### YOUR CODE ENDS HERE   ##### # noqa: E266
         return occupied
 
-    def where_occupied(self, format='xy') -> np.array:
+    def where_occupied(self, *, format='xy', threshold=50) -> np.array:
         """
         Find the locations of all cells that are occupied.
 
-        Inputs:
-            format      requested format of the returned data ('xy', 'rc', 'ind')
+        Optional Inputs:
+            format      requested format of the returned data: 'xy', 'rc', 'ind' (default 'xy')
+            threshold   minimum value to consider a cell occupied (default 50)
         Outputs:
             locations   np.array with the locations of occupied cells in the requested format
         """

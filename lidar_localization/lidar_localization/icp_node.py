@@ -6,15 +6,21 @@ from rclpy.time import Time
 from rcl_interfaces.msg import ParameterDescriptor, ParameterType
 import tf2_ros
 
-from geometry_msgs.msg import TransformStamped
+from geometry_msgs.msg import (
+    PoseWithCovarianceStamped,
+    Transform,
+    TransformStamped
+)
 from sensor_msgs.msg import LaserScan
 from nav_msgs.msg import OccupancyGrid
 from nav_msgs.srv import GetMap
 
+import numpy as np
 from threading import Lock
 
-from lidar_localization.icp2d import ICP2D
-from occupancy_grid.occupancy_grid import OccupancyGridMap
+from lidar_localization import ICP2D
+import transform2d_utils as tf2d
+from occupancy_grid import OccupancyGridMap
 
 # Indexing values
 X = 0
@@ -58,6 +64,10 @@ class ICPLocalizationNode(Node):
             descriptor=ParameterDescriptor(
                 type=ParameterType.PARAMETER_BOOL))
 
+        # Set up required data
+        self.have_map = False
+        self.have_transform = False
+
         # Get initial pose (of odom with respect to map frame)
         initial_pose_x = self.get_parameter('initial_pose_x').get_parameter_value().double_value
         initial_pose_y = self.get_parameter('initial_pose_y').get_parameter_value().double_value
@@ -76,6 +86,15 @@ class ICPLocalizationNode(Node):
         self.tolerance = None  # tolerance for fitting
         self.lock = Lock()  # to ensure ICP object can be locked
 
+        # Subscribers
+        self.sensor_frame_id = None  # frame ID of the lidar
+        self.scan_sub = self.create_subscription(LaserScan, 'scan', self.scan_callback, 10)
+        self.pose_sub = self.create_subscription(
+            PoseWithCovarianceStamped,
+            'initialpose',
+            self.initialpose_callback,
+            1)
+
         # Get map
         if self.get_parameter('use_map_topic').get_parameter_value().bool_value:
             latching_qos = QoSProfile(
@@ -86,7 +105,6 @@ class ICPLocalizationNode(Node):
                 'map',
                 self.map_callback,
                 qos_profile=latching_qos)
-            self.map = None
         else:
             # Get map from map server
             map_client = self.create_client(GetMap, 'map_server/map')
@@ -100,22 +118,32 @@ class ICPLocalizationNode(Node):
             with self.lock:
                 # Initialize the ICP map points
                 self.ogm = OccupancyGridMap.from_msg(future.result().map)
+                self.have_map = True
                 self.initialize_icp(future.result().map)
 
         # TF information
         self.tf_buffer = tf2_ros.Buffer()
         self.tf_listener = tf2_ros.TransformListener(self.tf_buffer, self)
         self.tf_broadcaster = tf2_ros.TransformBroadcaster(self)
-        # Time delay to account for in transforms
+
+        # Time delay to account for delay in transforms
         self.tf_time_travel = \
-            Duration(self.get_parameter('time_travel').get_parameter_value().double_value)
+            Duration(seconds=self.get_parameter('time_travel').get_parameter_value().double_value)
 
-        # Publish initial transformation
-        self.get_clock().sleep(0.1)  # pause to let the tf broadcaster start up
-        self.publish_map_odom_tf(self.get_clock().now())
-
-        # Scan subscriber
-        self.scan_sub = self.create_subscription(LaserScan, 'scan', self.scan_callback, 10)
+        # Make sure the transformation between odom and robot exists
+        ready = False
+        while not ready:
+            self.get_clock().sleep_for(Duration(seconds=0.1))
+            with self.lock:
+                ready = self.sensor_frame_id is not None
+        future = self.tf_listener.buffer.wait_for_transform_async(
+            self.sensor_frame_id,
+            self.tf_map_odom.child_frame_id,
+            Time())
+        rclpy.spin_until_future_complete(self, future)
+        self.have_transform = True
+        self.get_logger().info(
+            f'Got transform from {self.tf_map_odom.child_frame_id} to {self.sensor_frame_id}')
 
     def initialize_icp(self, map: OccupancyGrid) -> None:
         """
@@ -157,6 +185,7 @@ class ICPLocalizationNode(Node):
         """
         with self.lock:
             self.ogm = OccupancyGridMap(msg)
+            self.have_map = True
             self.initialize_icp(msg)
 
     def publish_map_odom_tf(self, time: Time) -> None:
@@ -185,6 +214,16 @@ class ICPLocalizationNode(Node):
         # Publish the transform
         self.tf_broadcaster.sendTransform(self.tf_map_odom)
 
+    def initialpose_callback(self, msg: PoseWithCovarianceStamped) -> None:
+        """Process an incoming initial pose message."""
+        # Convert from a Pose to a Transform
+        T = Transform(translation=msg.pose.pose.position,
+                      rotation=msg.pose.pose.orientation)
+        # Update the pose
+        self.pose = tf2d.transform2xyt(T)
+        # Publish the pose
+        self.publish_map_odom_tf(msg.header.stamp)
+
     def scan_callback(self, msg: LaserScan) -> None:
         """
         Process the lidar scan and use ICP to perform localization.
@@ -199,6 +238,19 @@ class ICPLocalizationNode(Node):
             2. Use ICP to find the pose of the odom frame with respect to the map frame
             3. Update self.pose with the new pose
         """
+        # Make sure the node is ready
+        with self.lock:
+            if self.sensor_frame_id is None:
+                self.sensor_frame_id = msg.header.frame_id
+        if not self.have_map:
+            self.get_logger().warning('No map received yet', once=True)
+            return
+        if not self.have_transform:
+            odom_frame = self.tf_map_odom.child_frame_id
+            self.get_logger().warning(
+                f'Waiting for transform from {odom_frame} to {self.sensor_frame_id}',
+                once=True)
+            return
         ##### YOUR CODE STARTS HERE ##### # noqa: E266
         # TODO Convert lidar all points to (x,y)
         # NOTE You should only keep points that are between the minimum and maximum range
@@ -220,7 +272,7 @@ class ICPLocalizationNode(Node):
         ##### YOUR CODE ENDS HERE   ##### # noqa: E266
 
         # Publish transform
-        self.publish_map_odom_tf(msg.header.stamp)
+        self.publish_map_odom_tf(Time.from_msg(msg.header.stamp))
 
 
 def main(args=None):

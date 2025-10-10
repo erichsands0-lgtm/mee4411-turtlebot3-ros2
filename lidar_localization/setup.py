@@ -24,6 +24,7 @@ setup(
     },
     entry_points={
         'console_scripts': [
+            'icp_node = lidar_localization.icp_node:main',
         ],
     },
 )

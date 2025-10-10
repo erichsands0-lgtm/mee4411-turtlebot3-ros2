@@ -61,6 +61,7 @@ def generate_launch_description():
     return LaunchDescription([
         map_filename_arg,
         delay_arg,
+        use_sim_time_arg,
         start_map_server,
         RegisterEventHandler(
             OnProcessStart(

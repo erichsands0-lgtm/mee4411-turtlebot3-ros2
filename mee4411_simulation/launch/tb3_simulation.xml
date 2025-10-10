@@ -14,6 +14,9 @@
     <arg name="joint_noise_std"
          default="0.0"
          description="standard deviation of wheel noise per second"/>
+    <arg name="lidar_noise_std"
+         default="0.0"
+         description="standard deviation of lidar measurements in meter"/>
     <arg name="sim_namespace"
          default=""
          description="namespace for `real` simulated robot" />
@@ -67,6 +70,7 @@
           <param name="offset/x" value="0.0"/>
           <param name="offset/y" value="0.0"/>
           <param name="offset/z" value="0.0"/>
+          <param name="noise_sd" value="$(var lidar_noise_std)"/>
      </node>
 
      <!-- Republish sensor messages to base workspace -->

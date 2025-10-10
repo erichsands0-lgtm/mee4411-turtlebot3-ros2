@@ -14,7 +14,7 @@ class ICP2D:
         Initialize a set of points to match against.
 
         Inputs:
-            map_pts: Nx2 numpy.ndarray of 2D points
+            map_pts: 2xN numpy.ndarray of 2D points
 
         Outputs:
             None
@@ -25,18 +25,18 @@ class ICP2D:
                (store the object in self.neighbors)
         """
         # Ensure points of the correct dimension
-        assert map_pts.shape[1] == 2, 'Points must be formatted as Nx2 numpy arrays'
+        assert map_pts.shape[0] == 2, 'Points must be formatted as 2xN numpy arrays'
 
         # Store the map points and create the nearest neighbors object
         self.map_pts = map_pts
-        self.neighbors = NearestNeighbors(n_neighbors=1).fit(map_pts)
+        self.neighbors = NearestNeighbors(n_neighbors=1).fit(map_pts.T)
 
     def best_fit_transform(self, pts: np.array) -> np.ndarray:
         """
         Calculate the least-squares best-fit transform that maps pts on to map_pts.
 
         Inputs:
-            pts: Nx2 numpy.ndarray of points
+            pts: 2xN numpy.ndarray of points
 
         Outputs:
             T: 3x3 homogeneous transformation matrix that maps pts on to map_pts
@@ -46,10 +46,10 @@ class ICP2D:
               finds the best-fit transform that maps pts on to map_pts.
         """
         # Ensure points of the correct dimension
-        assert pts.shape[1] == 2
+        assert pts.shape[0] == 2
 
         # Find the nearest (Euclidean) neighbor in the map for each point in pts
-        distances, indices = self.neighbors.kneighbors(pts, return_distance=True)
+        distances, indices = self.neighbors.kneighbors(pts.T, return_distance=True)
         distances = distances.ravel()  # make 1D arrays
         indices = indices.ravel()
 
@@ -88,7 +88,7 @@ class ICP2D:
         Find the best-fit transform that maps points A on to points B using ICP.
 
         Inputs:
-            pts: Nx2 numpy.ndarray of source points
+            pts: 2xN numpy.ndarray of source points
             init_pose: 3x3 homogeneous transformation
             max_iterations: exit algorithm after max_iterations
             tolerance: convergence criteria
@@ -99,6 +99,8 @@ class ICP2D:
             i: number of iterations to converge
         """
         # Get number of dimensions and ensure that it is correct
+        m = pts.shape[0]
+        assert m == 2, 'Points must be formatted as 2xN numpy arrays'
         m = pts.shape[1]
         assert m == 2, 'Points must be formatted as Nx2 numpy arrays'
 
@@ -106,6 +108,7 @@ class ICP2D:
         T = np.eye(3)  # initialize identity transformation
 
         ##### YOUR CODE STARTS HERE ##### # noqa: E266
+        # TODO Make points homogeneous, copy them to maintain the originals
         # TODO See if there an initial pose estimate, if so then fill it in
         pass
 

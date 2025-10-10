@@ -13,8 +13,8 @@ from .transform2d_utils import transform2homogeneous, transform2xyt
 def lookup_transform(tf_buffer: tf2_ros.Buffer,
                      base_frame: str,
                      child_frame: str,
-                     stamp: Time,
                      *,
+                     stamp: Time = Time(),
                      time_travel: Optional[Duration] = Duration(seconds=0),
                      format: Optional[str] = 'transform'
                      ) -> Union[None, np.ndarray, Transform, Tuple]:
