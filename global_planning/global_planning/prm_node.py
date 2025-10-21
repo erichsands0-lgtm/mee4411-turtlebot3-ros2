@@ -4,6 +4,8 @@ from rclpy import (
     spin,
     spin_until_future_complete,
 )
+from rclpy.action import ActionServer
+from rclpy.client import Client
 from rclpy.node import Node
 from rcl_interfaces.msg import ParameterDescriptor, ParameterType
 from rclpy.qos import QoSProfile, QoSDurabilityPolicy
@@ -11,6 +13,9 @@ from rclpy.qos import QoSProfile, QoSDurabilityPolicy
 import tf2_ros
 
 from geometry_msgs.msg import PoseStamped
+from nav2_msgs.action import ComputePathToPose
+from nav2_msgs.msg import Costmap
+from nav2_msgs.srv import GetCostmap
 from nav_msgs.msg import OccupancyGrid, Path
 from nav_msgs.srv import GetMap
 from visualization_msgs.msg import MarkerArray
@@ -52,6 +57,12 @@ class PRMNode(Node, TB3Params):
                 type=ParameterType.PARAMETER_BOOL,
                 description='Whether to publish the PRM graph for visualization'))
         self.declare_parameter(
+            'show_every_n',
+            20,
+            descriptor=ParameterDescriptor(
+                type=ParameterType.PARAMETER_INTEGER,
+                description='Publish the PRM graph every n added points'))
+        self.declare_parameter(
             'connection_radius',
             1.0,
             descriptor=ParameterDescriptor(
@@ -69,6 +80,18 @@ class PRMNode(Node, TB3Params):
             descriptor=ParameterDescriptor(
                 type=ParameterType.PARAMETER_INTEGER,
                 description='Number of points to sample in the PRM'))
+        self.declare_parameter(
+            'use_nav2_costmap',
+            False,
+            descriptor=ParameterDescriptor(
+                type=ParameterType.PARAMETER_BOOL,
+                description='Whether to use the Nav2 costmap (true/false)'))
+        self.declare_parameter(
+            'use_map_topic',
+            False,
+            descriptor=ParameterDescriptor(
+                type=ParameterType.PARAMETER_BOOL,
+                description='Whether to use the map topic (true/false)'))
 
         # Initialize TB3 Parameters
         robot_model = self.get_parameter('tb3_model').get_parameter_value().string_value
@@ -84,10 +107,12 @@ class PRMNode(Node, TB3Params):
         # Map
         self.occ_threshold = \
             self.get_parameter('occ_threshold').get_parameter_value().integer_value
-        self.map_frame_id = None
+        self.have_map = False
 
         # PRM
         self.show_prm = self.get_parameter('show_prm').get_parameter_value().bool_value
+        self.prm_params['publish_every_n'] = \
+            self.get_parameter('show_every_n').get_parameter_value().integer_value
         self.prm_params['connection_radius'] = \
             self.get_parameter('connection_radius').get_parameter_value().double_value
         self.prm_params['step_size'] = \
@@ -100,20 +125,39 @@ class PRMNode(Node, TB3Params):
             depth=1,
             durability=QoSDurabilityPolicy.TRANSIENT_LOCAL)
 
-        self.path_pub = self.create_publisher(Path, 'path', latching_qos)
-        self.costmap_pub = self.create_publisher(OccupancyGrid, 'costmap', latching_qos)
+        use_map_topic = self.get_parameter('use_map_topic').get_parameter_value().bool_value
+        use_nav2_costmap = self.get_parameter('use_nav2_costmap').get_parameter_value().bool_value
+
+        self.costmap_pub = self.create_publisher(Costmap, 'costmap', latching_qos) \
+            if not use_nav2_costmap else None
         self.marker_pub = self.create_publisher(MarkerArray, '~graph', latching_qos) \
             if self.show_prm else None
 
-        self.goal_sub = self.create_subscription(PoseStamped, 'goal', self.goal_callback, 10)
+        self.action_server = ActionServer(
+            self,
+            ComputePathToPose,
+            'compute_path_to_pose_prm',
+            self.path_callback)
 
         self.tf_buffer = tf2_ros.Buffer()
         self.tf_listener = tf2_ros.TransformListener(self.tf_buffer, self)
 
         # Get map
-        use_map_topic = self.get_parameter('use_map_topic').get_parameter_value().bool_value
         self.lock = Lock()
-        if use_map_topic:
+        if use_nav2_costmap:
+            # Get costmap from Nav2 costmap server
+            costmap_client = self.create_client(GetCostmap, 'global_costmap/get_costmap')
+            while not costmap_client.wait_for_service(timeout_sec=1.0):
+                self.get_logger().info('Get global costmaps service not available, waiting...', once=True)
+            future = costmap_client.call_async(GetCostmap.Request())
+            spin_until_future_complete(self, future)
+            if future.result() is None:
+                self.get_logger().error('Costmap service call failed')
+                return
+            with self.lock:
+                self.have_map = True
+                self.prepare_prm(future.result().map)
+        elif use_map_topic:
             self.map_sub = \
                 self.create_subscription(OccupancyGrid, 'map', self.map_callback, latching_qos)
         else:
@@ -127,16 +171,17 @@ class PRMNode(Node, TB3Params):
                 return
             with self.lock:
                 self.have_map = True
-                self.prepare_prm(future.result().map)
+                costmap = self.prepare_costmap(future.result().map)
+                self.prepare_prm(costmap)
 
-    def prepare_prm(self, map: OccupancyGrid) -> None:
+    def prepare_costmap(self, map: OccupancyGrid) -> Costmap:
         """
         Convert the input map to a costmap to use for planning.
 
         Inputs:
             map: OccupancyGrid map from ROS
         Outputs:
-            None
+            costmap: Costmap created from the input map
 
         Key steps:
             1) Binarize the map
@@ -146,6 +191,14 @@ class PRMNode(Node, TB3Params):
             2) Inflate obstacles by the robot size
             3) Use the inflated map to create a PRM
         """
+        costmap = Costmap()
+        costmap.header = map.header
+        costmap.metadata.map_load_time = map.info.map_load_time
+        costmap.metadata.resolution = map.info.resolution
+        costmap.metadata.size_x = map.info.width
+        costmap.metadata.size_y = map.info.height
+        costmap.metadata.origin = map.info.origin
+
         # Save frame ID
         self.map_frame_id = map.header.frame_id
 
@@ -175,32 +228,50 @@ class PRMNode(Node, TB3Params):
         img = cv.dilate(img, robot_img)
 
         # Update map data
-        map.data = img.flatten().astype(np.int8) - 1  # shift values back down
-        map.data[np.logical_and(ind_unknown, map.data == 0)] = -1  # put unknown back to -1
+        costmap.data = img.flatten().astype(np.int8) - 1  # shift values back down
+        costmap.data[np.logical_and(ind_unknown, costmap.data == 0)] = -1  # put unknown back to -1
 
         # Publish costmap
         self.costmap_pub.publish(map)
 
-        # Make PRM
-        self.prm = PRM(map, **self.prm_params, publisher=self.marker_pub, clock=self.get_clock())
+        return
 
     def map_callback(self, msg: OccupancyGrid) -> None:
         """Use the incoming map to create a PRM."""
         with self.lock:
-            self.prepare_prm(msg)
+            costmap = self.prepare_costmap(msg)
+            self.prepare_prm(costmap)
 
-    def goal_callback(self, goal: PoseStamped) -> None:
+    def prepare_prm(self, costmap: Costmap) -> None:
+        """
+        Prepare the PRM using the given costmap.
+
+        Inputs:
+            costmap: Costmap to use for PRM construction
+        Outputs:
+            None
+        """
+        # Make PRM
+        self.prm = PRM(costmap, **self.prm_params, publisher=self.marker_pub, clock=self.get_clock())
+
+    def path_callback(self, request: ComputePathToPose) -> ComputePathToPose:
         """
         Use the PRM to plan a path from the current pose of the robot to the goal pose.
 
         Inputs:
-            goal: Goal pose as a PoseStamped message
+            request: Action request (nav2_msgs/Action/ComputePathToPose/Request)
         Outputs:
-            None
+            response: Action response (nav2_msgs/Action/ComputePathToPose/Response)
         """
         ##### YOUR CODE STARTS HERE ##### # noqa: E266
-        # TODO Look up current pose of the robot in the map frame
+        # TODO Read the information in the action request, paying attention to initial pose
+        # NOTE The use_start field coming in should always be False
         pass
+
+        # TODO Check that the requested data is valid, if not return the proper error code
+        #   (see the action response definition for the list of error codes)
+
+        # NOTE No need to publish feedback since the action definition does not include it
 
         # TODO Plan a path using prm.query to plan a path
         #   from the current robot position to the goal position
@@ -208,9 +279,12 @@ class PRMNode(Node, TB3Params):
         #   to ensure that the PRM does not get modified while being used
         #   with self.lock:
         #       self.prm.query(<INPUTS>)
+        # NOTE You can optionally choose to add points to the PRM if no path is found
+        # NOTE You need to make sure to connect the start and goal points to the PRM graph
+        #   before calling query
         pass
 
-        # TODO Publish the path using the ROS publisher
+        # TODO Create the action response, fill it in, and return it
         pass
         ##### YOUR CODE ENDS HERE   ##### # noqa: E266
 
@@ -232,11 +306,3 @@ def main(args=None):
 
 if __name__ == '__main__':
     main()
-
-# Replace planner server in nav2 with this node
-# https://docs.nav2.org/configuration/packages/configuring-planner-server.html
-# https://docs.nav2.org/plugins/index.html#planners
-
-
-# ros2 launch turtlebot3_gazebo turtlebot3_world.launch.py
-# ros2 launch turtlebot3_navigation2 navigation2.launch.py use_sim_time:=True map:=$HOME/turtlebot3_world.yaml

@@ -93,6 +93,7 @@
     <include file="$(find-pkg-share mee4411_simulation)/launch/collision_detector.py">
         <arg name="map_conversions_implemented" value="$(var map_conversions_implemented)"/>
         <arg name="use_sim_time" value="$(var use_sim_time)"/>
+        <arg name="sim_namespace" value="$(var sim_namespace)"/>
     </include>
 
     <!-- Robot visualization -->

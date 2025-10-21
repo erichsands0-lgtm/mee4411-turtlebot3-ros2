@@ -2,6 +2,7 @@ from rclpy.clock import Clock
 from rclpy.publisher import Publisher
 
 from geometry_msgs.msg import Point
+from nav2_msgs.msg import Costmap
 from nav_msgs.msg import OccupancyGrid, Path
 from visualization_msgs.msg import Marker, MarkerArray
 
@@ -20,31 +21,46 @@ ALPHA = 0.25  # alpha value for graph transparency
 class PRM(OccupancyGridMap):
     def __init__(
             self,
-            map: OccupancyGrid,
+            costmap: Costmap,
             num_points: int,
             connection_radius: float,
             step_size: float,
             *,
             publisher: Publisher = None,
+            publish_every_n: int = 20,
             clock: Clock = None) -> None:
         """
         Initialize the probabilistic roadmap in the given occupancy grid.
 
         Inputs:
-            map: An OccupancyGrid object representing the environment
+            map: An Costmap object representing the environment
             num_points: Number of points to sample in the PRM
             connection_radius: Radius in which to check for connections between nodes
             step_size: Step size to use when checking for collisions between nodes
             publisher: ROS publisher for visualization
+            publish_every_n: Publish the graph every n added points
             clock: ROS clock for timestamps
         Outputs:
             None
         """
+        # Convert the costmap to an occupancy grid map
+        map = OccupancyGrid()
+        map.header = costmap.header
+        map.info.map_load_time = costmap.metadata.map_load_time
+        map.info.resolution = costmap.metadata.resolution
+        map.info.width = costmap.metadata.size_x
+        map.info.height = costmap.metadata.size_y
+        map.info.origin = costmap.metadata.origin
+        map.data = costmap.data
+
         super(PRM, self).from_msg(map)
 
         # Check inputs
         if publisher is not None and clock is None:
             raise Exception('Clock is required when publishing')
+        self.publisher = publisher
+        self.publish_every_n = publish_every_n
+        self.clock = clock
 
         # Parameters
         self.connection_radius = connection_radius  # radius in which to check for connections
@@ -55,33 +71,28 @@ class PRM(OccupancyGridMap):
         self.kdtree = None  # KDTree for quickly finding nearest node
 
         # Build the PRM
-        self.build_prm(num_points, publisher=publisher, clock=clock)
+        self.build_prm(num_points)
 
-    def build_prm(self, num_points: int, *,
-                  publisher: Publisher = None, clock: Clock = None) -> None:
+    def build_prm(self, num_points: int) -> None:
         """
         Build a PRM graph consisting of num_points.
 
         Inputs:
             num_points: Number of points to sample in the PRM
-            publisher: ROS publisher for visualization
-            clock: ROS clock for timestamps
         Outputs:
             None
         """
         # Initialize empty graph and add points
         self.graph = nx.Graph()  # intialize empty graph
-        self.add_to_prm(num_points, publisher=publisher, clock=clock)
+        self.kdtree = None  # initialize empty KD tree
+        self.add_to_prm(num_points)
 
-    def add_to_prm(self, num_points: int, *,
-                   publisher: Publisher = None, clock: Clock = None) -> None:
+    def add_to_prm(self, num_points: int) -> None:
         """
         Add num_points to the PRM graph.
 
         Inputs:
             num_points: Number of points to sample in the PRM
-            publisher: ROS publisher for visualization
-            clock: ROS clock for timestamps
         Outputs:
             None
 
@@ -89,41 +100,46 @@ class PRM(OccupancyGridMap):
         Points should be connected if they are within self.connection_radius and
             the edge between them is valid (i.e., not in collision).
         """
-        # Wrap in tqdm for progress bar
-        for i in tqdm(range(num_points)):
+        # First, add points to the graph
+        for i in tqdm(range(num_points)):  # Wrap in tqdm for progress bar
             ##### YOUR CODE STARTS HERE ##### # noqa: E266
-            # TODO Generate valid node
+            # TODO Generate valid point in free space
             pass
 
-            # TODO add the point to the graph node list
+            # TODO Add the point to the graph node list
             #   Include an attribute called 'location' holding the 2D position
             #   'location' can be formatted as a list or as a numpy array
             #   see documentation here:
             #   https://networkx.org/documentation/stable/tutorial.html#adding-attributes-to-graphs-nodes-and-edges
             pass
-
-            # Connect to other nodes in the graph
-            # TODO find other nodes within the connection radius
-            pass
-
-            # TODO check to see if the path from the new point to any node is obstacle free
-            pass
-
-            # TODO if it is a clear path, add it to the graph edge list
-            pass
             ##### YOUR CODE ENDS HERE   ##### # noqa: E266
             # Display graph as it is being built
-            if publisher is not None and i % 20 == 19:
-                publisher.publish(self.to_msg(clock=clock))
+            if self.publisher is not None and i % self.publish_every_n == self.publish_every_n - 1:
+                self.publisher.publish(self.to_msg(clock=self.clock))
 
-        # Show final graph
-        if publisher is not None:
-            publisher.publish(self.to_msg(clock=clock))
+        # Show final set of nodes
+        if (self.publisher is not None) and (i % self.publish_every_n != self.publish_every_n - 1):
+            self.publisher.publish(self.to_msg(clock=self.clock))
 
         # Initialize KD tree for quickly finding nearest node
         pts = np.array([p for _, p in self.graph.nodes.data('location')])
         assert pts.shape[1] == 2
         self.kdtree = KDTree(pts)
+
+        # Next, add edges between the points within the connection radius
+        ##### YOUR CODE STARTS HERE ##### # noqa: E266
+        # TODO For each point in the graph, do the following:
+        #   Find other points within the connection radius
+        #   Check to see if the path from the new point to a previous point is obstacle free
+        #     If it is, add an edge between the two points in the graph
+        # NOTE Read the documentation for the KDTree class to find points within a certain radius
+        #    https://docs.scipy.org/doc/scipy/reference/generated/scipy.spatial.KDTree.html
+        pass
+        ##### YOUR CODE ENDS HERE   ##### # noqa: E266
+
+        # Show final graph with edges
+        if self.publisher is not None:
+            self.publisher.publish(self.to_msg(clock=self.clock))
 
     def sample_free_point(self) -> np.array:
         """
@@ -136,13 +152,15 @@ class PRM(OccupancyGridMap):
         """
         ##### YOUR CODE STARTS HERE ##### # noqa: E266
         # TODO Draw a random point within the boundary
-        pt = np.random.rand(2)
+        # NOTE You can use np.random.rand to draw random numbers between 0 and 1
+        pass
 
         # TODO Check if point is valid (i.e., not in collision based on the map)
-        #      If it is try again, if not then return the point
+        #      If it is not then try again, if it is valid then return the point
         pass
+
+        return np.array([0.0, 0.0])  # placeholder return
         ##### YOUR CODE ENDS HERE   ##### # noqa: E266
-        return pt
 
     def valid_edge(self, p0: np.array, p1: np.array) -> bool:
         """
@@ -155,7 +173,7 @@ class PRM(OccupancyGridMap):
             True if the edge is valid (i.e., not in collision), False otherwise
         """
         ##### YOUR CODE STARTS HERE ##### # noqa: E266
-        # TODO create a series of points starting at p0 and ending at p1 in steps of self.step_size
+        # TODO Create a series of points starting at p0 and ending at p1 in steps of self.step_size
         pass
 
         # TODO Check to make sure none of the points collide with the map
@@ -163,23 +181,6 @@ class PRM(OccupancyGridMap):
 
         return False
         ##### YOUR CODE ENDS HERE   ##### # noqa: E266
-
-    def find_nearest_node(self, pt: np.array) -> int:
-        """
-        Find the nearest node in the graph (with a valid edge) to the input point pt.
-
-        Inputs:
-            pt: 2D point as a numpy.array
-        Outputs:
-            Return the index of the node (or None if no valid node found)
-        """
-        # Get the 10 closest points from the KDTree
-        _, ind = self.kdtree.query(pt, k=10)
-        # Check each one to see if there is a valid edge
-        for i in ind:
-            if self.valid_edge(pt, self.graph.nodes[i]['location']):
-                return i
-        return None
 
     def query(self, start: np.array, goal: np.array) -> Path:
         """
@@ -194,32 +195,28 @@ class PRM(OccupancyGridMap):
         # Make sure the PRM is initialized
         if self.graph is None:
             raise Exception('PRM not initialized')
-
-        # Find nearest nodes to start and goal
-        ind_start = self.find_nearest_node(start)
-        if ind_start is None:
-            raise Exception('Start point invalid')
-        ind_goal = self.find_nearest_node(goal)
-        if ind_goal is None:
-            raise Exception('Goal point invalid')
-
         ##### YOUR CODE STARTS HERE ##### # noqa: E266
-        # Plan path using A*
-        # TODO use networkx library to call A* to find a path from ind_start to ind_goal
+        # TODO Add the start and goal points to the PRM graph
+        # NOTE You need to connect the start and goal points to existing nodes in the PRM
         pass
 
-        # Generate returned path
-        # TODO convert the path returned by networkx to a nav_msgs/Path
-        # NOTE make sure to include the start and goal points
+        # TODO Plan path using A*
+        # NOTE Use networkx library to call A* to find a path from the start to goal nodes.
+        #   See documentation here:
+        #   https://networkx.org/documentation/stable/reference/algorithms/generated/networkx.algorithms.shortest_paths.astar.astar_path.html
+        pass
+
+        # TODO Convert the path returned by networkx to a nav_msgs/msg/Path message
+        # NOTE Make sure to include the start and goal points
         path = Path()
         pass
 
         return path
         ##### YOUR CODE ENDS HERE   ##### # noqa: E266
 
-    def to_msg(self, clock: Clock = None) -> None:
+    def to_msg(self) -> None:
         """Convert the PRM graph to a visualization_msgs/msg/MarkerArray."""
-        if clock is None:
+        if self.clock is None:
             raise Exception('Clock is required for to_msg')
 
         # Create marker array
@@ -228,7 +225,7 @@ class PRM(OccupancyGridMap):
         # Create marker to show the nodes in the graph
         points_marker = Marker()
         points_marker.header.frame_id = self.frame_id
-        points_marker.header.stamp = clock.now().to_msg()
+        points_marker.header.stamp = self.clock.now().to_msg()
         points_marker.ns = 'points'
         points_marker.type = Marker.SPHERE_LIST
         points_marker.pose.orientation.w = 1.0
