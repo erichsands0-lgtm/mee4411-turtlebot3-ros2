@@ -1,6 +1,6 @@
 from setuptools import find_packages, setup
 
-package_name = 'wheel_odometry'
+package_name = 'lidar_localization'
 
 setup(
     name=package_name,
@@ -15,7 +15,7 @@ setup(
     zip_safe=True,
     maintainer='Philip Dames',
     maintainer_email='pdames@temple.edu',
-    description='A package to perform wheel odometry for a differential drive robot',
+    description='TODO: Package description',
     license='LGPL-3.0-only',
     extras_require={
         'test': [
@@ -24,7 +24,7 @@ setup(
     },
     entry_points={
         'console_scripts': [
-            'wheel_odometry = wheel_odometry.wheel_odometry_node:main',
+            'icp_node = lidar_localization.icp_node:main',
         ],
     },
 )

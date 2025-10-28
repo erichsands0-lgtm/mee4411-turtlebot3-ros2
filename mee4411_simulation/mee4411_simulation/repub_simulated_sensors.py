@@ -38,6 +38,10 @@ class SimRepub(Node, TB3Params):
         # Namespace to remove from frames
         self.namespace_remove_ = \
             self.get_parameter('namespace_remove').get_parameter_value().string_value
+        # Strip any leading or trailing slashes
+        self.namespace_remove_ = self.namespace_remove_.strip('/')
+
+        # Other Parameters
         self.noise_std_ = self.get_parameter('noise_std').get_parameter_value().double_value
         self.alpha_ = \
             self.get_parameter('alpha').get_parameter_value().double_value  # running average param
@@ -93,7 +97,9 @@ class SimRepub(Node, TB3Params):
 
                 # Get true information displacement
                 self.position_ = [pos + (j1 - j0) for pos, j1, j0 in
-                                  zip(self.position_, msg.position, self.prev_joint_state_.position)]
+                                  zip(self.position_,
+                                      msg.position,
+                                      self.prev_joint_state_.position)]
                 self.velocity_ = [v for v in msg.velocity]
 
                 # Add noise proportional to wheel velocity

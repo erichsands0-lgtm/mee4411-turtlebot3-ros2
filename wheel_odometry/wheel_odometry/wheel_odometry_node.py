@@ -9,7 +9,7 @@ from nav_msgs.msg import Odometry
 
 import numpy as np
 
-from .tb3_kinematics import TB3Kinematics
+from wheel_odometry import TB3Kinematics
 
 
 class WheelOdometryNode(Node, TB3Kinematics):

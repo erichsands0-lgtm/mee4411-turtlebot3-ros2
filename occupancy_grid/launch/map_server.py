@@ -28,6 +28,13 @@ def generate_launch_description():
         description='Default delay to start map_server.'
     )
 
+    use_sim_time = LaunchConfiguration('use_sim_time')
+    use_sim_time_arg = DeclareLaunchArgument(
+        'use_sim_time',
+        default_value='False',
+        description='Whether to use simulation time.'
+    )
+
     # Parameters
     lifecycle_nodes = ['map_server']
     use_sim_time = True
@@ -61,6 +68,7 @@ def generate_launch_description():
     return LaunchDescription([
         map_filename_arg,
         delay_arg,
+        use_sim_time_arg,
         start_map_server,
         RegisterEventHandler(
             OnProcessStart(
