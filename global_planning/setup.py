@@ -24,6 +24,7 @@ setup(
     },
     entry_points={
         'console_scripts': [
+            'prm_node = global_planning.prm_node:main',
         ],
     },
 )

@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import rclpy
+from rclpy.client import Client
 from rclpy.duration import Duration
 from rclpy.node import Node
 from rclpy.time import Time
@@ -7,6 +8,8 @@ from rclpy.qos import QoSProfile, QoSDurabilityPolicy
 from rcl_interfaces.msg import ParameterDescriptor, ParameterType
 import tf2_ros
 
+from lifecycle_msgs.msg import State as LifecycleState
+from lifecycle_msgs.srv import GetState
 from nav_msgs.msg import OccupancyGrid
 from nav_msgs.srv import GetMap
 
@@ -82,6 +85,8 @@ class CollisionDetectionNode(Node):
                 self.map_callback,
                 qos_profile=latching_qos)
         else:
+            if not self.ensure_client_active(self.create_client(GetState, 'map_server/get_state')):
+                raise RuntimeError('Map server is not active')
             map_client = self.create_client(GetMap, 'map_server/map')
             map_client.wait_for_service()
             self.get_clock().sleep_for(Duration(seconds=1.0))
@@ -108,6 +113,28 @@ class CollisionDetectionNode(Node):
         rclpy.spin_until_future_complete(self, future)
         self.have_transform = True
         self.get_logger().info(f'Got transform from {self.map_frame_id} to {self.robot_frame_id}')
+
+    def ensure_client_active(self, client: Client) -> bool:
+        """Ensure that the given lifecycle client is active."""
+        while not client.wait_for_service(timeout_sec=1.0):
+            self.get_logger().info(f'{client.srv_name} not available, waiting...', once=True)
+        while rclpy.ok():
+            get_state_req = GetState.Request()
+            future = client.call_async(get_state_req)
+            rclpy.spin_until_future_complete(self, future)
+            if future.result() is not None:
+                current_state = future.result().current_state
+                if current_state.id == LifecycleState.PRIMARY_STATE_ACTIVE:
+                    return True
+                else:
+                    self.get_logger().info(
+                        f'{client.srv_name} is not ready yet (current state: {current_state.label}), waiting...',
+                        once=True)
+            else:
+                self.get_logger().error(f'{client.srv_name} service call failed')
+                return False
+            self.get_clock().sleep_for(Duration(seconds=1.0))
+        return False
 
     def map_callback(self, msg: OccupancyGrid) -> None:
         self.prepare_map(msg)

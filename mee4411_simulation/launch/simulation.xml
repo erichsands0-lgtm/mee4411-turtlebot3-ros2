@@ -86,25 +86,24 @@
     </node>
 
     <!-- Navigation -->
-    <let name="nav_params_file"
-         value="$(find-pkg-share turtlebot3_navigation2)/param/humble/$(env TURTLEBOT3_MODEL).yaml"/>
-    <node name="nav2_container"
-          pkg="rclcpp_components"
-          exec="component_container_isolated"
-          output="screen"
-          arguments="--ros-args --log-level info">
-        <arg name="parameters" value="$(var nav_params_file)"/>
-    </node>
-    <include file="$(find-pkg-share nav2_bringup)/launch/navigation_launch.py">
+    <include file="$(find-pkg-share mee4411_simulation)/launch/navigation_launch.py">
         <arg name="use_sim_time" value="$(var use_sim_time)"/>
-        <arg name="autostart" value="True"/>
-        <arg name="params_file" value="$(var nav_params_file)"/>
-        <arg name="use_composition" value="True"/>
-        <arg name="use_respawn" value="True"/>
-        <arg name="container_name" value="nav2_container"/>
+        <arg name="map_filename" value="$(var map_filename)"/>
+        <arg name="params_file" value="$(find-pkg-share turtlebot3_navigation2)/param/humble/$(env TURTLEBOT3_MODEL).yaml"/>
+        <arg name="use_planner" value="False"/>
     </include>
 
     <!-- Global planning -->
+    <node name="planner_server"
+          pkg="global_planning"
+          exec="prm_node"
+          output="screen">
+        <param name="use_sim_time" value="$(var use_sim_time)"/>
+        <param name="tb3_model" value="$(env TURTLEBOT3_MODEL)"/>
+        <param name="connection_radius" value="1.0"/>
+        <param name="step_size" value="0.01"/>
+        <param name="num_points" value="1000"/>
+    </node>
 
     <!-- Local controller -->
 
