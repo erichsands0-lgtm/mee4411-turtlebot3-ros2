@@ -1,45 +1,40 @@
-from nav_msgs.msg import OccupancyGrid
-
 import numpy as np
 from typing import Tuple
 
-
 class MapConversions:
+    """
+    Class for coordinate conversions between world (x, y), grid indices (row, col), and linear indices.
+    """
+
     def __init__(self, boundary, resolution: float) -> None:
         """
-        Create an object from parameters.
+        Initialize with boundary [xmin, ymin, xmax, ymax] and cell resolution.
 
-        inputs:
-            boundary    edges of the environment in the order (xmin, ymin, xmax, ymax) [m]
-            resolution  size of the cells in the occupancy grid [m]
+        boundary: [xmin, ymin, xmax, ymax]
+        resolution: size of each grid cell in meters
         """
-        # Boundary of the envrionment in the format (xmin, ymin, xmax, ymax)
         self.boundary = boundary
-        # Size of the cells in the occupancy grid
         self.resolution = resolution
-        ##### YOUR CODE STARTS HERE ##### # noqa: E266
-        # TODO Create the array shape in the format (# rows, # columns)
-        xmin, ymin, xmax, ymax, = boundary
-        Nr = int((ymax - ymin) / resolution)
-        Nc = int((xmax - xmin) / resolution)
-        self.array_shape = (Nr, Nc)
-        ##### YOUR CODE ENDS HERE   ##### # noqa: E266
+        # Compute grid size (#rows, #cols)
+        self.array_shape = (int(np.ceil((boundary[3] - boundary[1]) / resolution)),
+                            int(np.ceil((boundary[2] - boundary[0]) / resolution)))
 
     @classmethod
-    def from_msg(cls, msg: OccupancyGrid):
-        """Create an object from an OccupancyGrid ROS msg."""
+    def from_msg(cls, msg):
+        """
+        Extract MapConversions from an OccupancyGrid message.
+        """
         ##### YOUR CODE STARTS HERE ##### # noqa: E266
         # TODO Extract the boundary and cell resolution from the occupancy grid message
+
+        resolution = msg.info.resolution
         xmin = msg.info.origin.position.x
         ymin = msg.info.origin.position.y
-        resolution = msg.info.resolution
-        width = msg.info.width
-        height = msg.info.height
-        
-        xmax = xmin + width * resolution
-        ymax = ymin + height * resolution
+        xmax = xmin + msg.info.width * resolution
+        ymax = ymin + msg.info.height * resolution
         boundary = [xmin, ymin, xmax, ymax]
         ##### YOUR CODE ENDS HERE   ##### # noqa: E266
+
         return cls(boundary, resolution)
 
     def sub2ind(self, rows: np.array, cols: np.array) -> np.array:
@@ -56,9 +51,10 @@ class MapConversions:
         """
         ##### YOUR CODE STARTS HERE ##### # noqa: E266
         # TODO Convert data in (row, col) format to ind format
-        Nr, Nc=self.array_shape
-        valid = (rows >= 0) & (cols >= 00) & (rows < Nr) & (cols < Nc)
-        inds = np.where(valid, rows * Nc + cols, -1)
+
+        inds = -np.ones_like(rows)
+        mask = (rows >= 0) & (cols >= 0) & (rows < self.array_shape[0]) & (cols < self.array_shape[1])
+        inds[mask] = rows[mask] * self.array_shape[1] + cols[mask]
         ##### YOUR CODE ENDS HERE   ##### # noqa: E266
         return inds
 
@@ -76,10 +72,12 @@ class MapConversions:
         """
         ##### YOUR CODE STARTS HERE ##### # noqa: E266
         # TODO Convert data in ind format to (row, col) format
-        Nr, Nc = self.array_shape
-        valid = (inds >= 0) & (inds < Nr * Nc)
-        rows = np.where(valid, np.floor_divide(inds, Nc), -1)
-        cols = np.where(valid, np.mod(inds, Nc), -1)
+
+        rows = -np.ones_like(inds)
+        cols = -np.ones_like(inds)
+        mask = (inds >= 0) & (inds < np.prod(self.array_shape))
+        rows[mask] = inds[mask] // self.array_shape[1]
+        cols[mask] = inds[mask] % self.array_shape[1]
         ##### YOUR CODE ENDS HERE   ##### # noqa: E266
         return rows, cols
 
@@ -98,19 +96,28 @@ class MapConversions:
         """
         ##### YOUR CODE STARTS HERE ##### # noqa: E266
         # TODO Convert data in (x, y) format to (row, col) format
-        xmin, ymin, xmax, ymax = self.boundary
-        s = self.resolution
 
-        r = np.floor((y - ymin) / s).astype(int)
-        c = np.floor((x - xmin) / s).astype(int)
+        col = np.array(np.floor((x - self.boundary[0]) / self.resolution))
+        row = np.array(np.floor((y - self.boundary[1]) / self.resolution))
+        ## Look for top/right edge cases
+        # Top Edge
+        edge1=self.boundary[3]
+        # Right edge
+        edge2=self.boundary[2]
 
-        Nr, Nc = self.array_shape
-        valid = (x >= xmin) & (x < xmax) & (y >= ymin) & (y < ymax)
-        r[~valid] = -1
-        c[~valid] = -1
-        rows, cols = r, c
-        ##### YOUR CODE ENDS HERE   ##### # noqa: E266
-        return rows, cols
+        mask1 = (y == edge1)  
+        row[mask1] = row[mask1] -1
+
+        mask2 = (x == edge2)
+        col[mask2] = col[mask2] -1
+        # invalid coordinates out the bottom
+        mask = ( y < self.boundary[1]) |  ( x < self.boundary[0]) | ( y > self.boundary[3]) |  ( x > self.boundary[2]) | (np.isnan(y)) |(np.isnan(x))
+        row[mask] = -1
+        col[mask] = -1
+        col = col.astype('int')
+        row = row.astype('int')
+         ##### YOUR CODE ENDS HERE   ##### # noqa: E266
+        return row, col
 
     def sub2xy(self, rows: np.array, cols: np.array) -> Tuple[np.array, np.array]:
         """
@@ -127,41 +134,27 @@ class MapConversions:
         """
         ##### YOUR CODE STARTS HERE ##### # noqa: E266
         # TODO Convert data in (row, col) format to (x, y) format
-        xmin, ymin, xmax, ymax = self.boundary
-        s = self.resolution
-        Nr, Nc = self.array_shape
 
-        valid = (rows >= 0) & (rows < Nr) & (cols >= 0) & (cols < Nc)
-        x = np.where(valid, xmin + s * (cols + 0.5), np.nan)
-        y = np.where(valid, ymin + s * (rows + 0.5), np.nan)
+        x = self.boundary[0] + (cols + 0.5) * self.resolution
+        y = self.boundary[1] + (rows + 0.5) * self.resolution
+        mask = (rows < 0) | (rows >= self.array_shape[0]) | (cols < 0) | (cols >= self.array_shape[1])
+        x[mask] = np.nan
+        y[mask] = np.nan
         ##### YOUR CODE ENDS HERE   ##### # noqa: E266
         return x, y
 
     def xy2ind(self, x: np.array, y: np.array) -> np.array:
         """
-        xy2ind converts (x,y) coordinate pairs into linear indices in row-major order.
-
-        inputs:
-            x           numpy array of x values
-            y           numpy array of y values
-        outputs:
-            numpy array of row indices
-            numpy array of column indices
+        Convert (x, y) coordinates to linear indices.
         """
         rows, cols = self.xy2sub(x, y)
-        ind = self.sub2ind(rows, cols)
-        return ind
+        return self.sub2ind(rows, cols)
 
     def ind2xy(self, inds: np.array) -> Tuple[np.array, np.array]:
         """
-        ind2xy converts linear indices in row-major order into (x,y) coordinate pairs.
-
-        inputs:
-            inds        numpy array of indices
-        outputs:
-            numpy array of x coordinates
-            numpy array of y coordinates
+        Convert linear indices to (x, y) coordinates.
         """
         rows, cols = self.ind2sub(inds)
-        x, y = self.sub2xy(rows, cols)
-        return (x, y)
+        return self.sub2xy(rows, cols)
+     
+     
