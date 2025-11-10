@@ -56,6 +56,7 @@ class CollisionDetectionNode(Node):
         # Set required data
         self.have_map = False
         self.have_transform = False
+        self.errors_logged = set()
 
         # Check if MapConversions is implemented
         self.map_conversions_implemented = \
@@ -128,7 +129,7 @@ class CollisionDetectionNode(Node):
                     return True
                 else:
                     self.get_logger().info(
-                        f'{client.srv_name} is not ready yet (current state: {current_state.label}), waiting...',
+                        f'{client.srv_name} is not ready yet (current state: {current_state.label}), waiting...',  # noqa: E501
                         once=True)
             else:
                 self.get_logger().error(f'{client.srv_name} service call failed')
@@ -185,7 +186,10 @@ class CollisionDetectionNode(Node):
                     self.robot_frame_id,
                     format='xyt')
             except Exception as err:
-                self.get_logger().warn(err)
+                if str(err) not in self.errors_logged:
+                    # Only log unique errors
+                    self.errors_logged.add(str(err))
+                    self.get_logger().warning(f'Transform error: {err}')
                 return
 
             # Get objects nearby the robot's current position

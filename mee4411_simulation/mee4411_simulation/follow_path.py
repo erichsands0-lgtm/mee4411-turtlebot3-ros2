@@ -1,9 +1,7 @@
 # Adapted from nav2_simple_commander example_follow_path.py example
 # https://github.com/ros-navigation/navigation2/blob/main/nav2_simple_commander/nav2_simple_commander/example_follow_path.py
 
-from math import sin, cos
-
-from geometry_msgs.msg import PoseStamped, PoseWithCovarianceStamped
+from geometry_msgs.msg import PoseStamped
 from nav2_simple_commander.robot_navigator import BasicNavigator, TaskResult
 
 from rclpy import init, spin
@@ -22,14 +20,16 @@ class FollowPathNode(BasicNavigator):
             'amcl',
             descriptor=ParameterDescriptor(
                 type=ParameterType.PARAMETER_STRING,
-                description='Choose localization method ("amcl", "fake_localization", "icp_node")'))
+                description='Choose localization method ("amcl", "fake_localization", "icp_node")'
+            )
+        )
         self.declare_parameter(
             'navigator',
             'bt_navigator',
             descriptor=ParameterDescriptor(
                 type=ParameterType.PARAMETER_STRING,
                 description='Choose navigation method ("bt_navigator", etc.)'))
-        
+
         # Subscribers
         self.goal_sub = self.create_subscription(
             PoseStamped,
@@ -94,6 +94,7 @@ def main(args=None):
     # Clean up the node and stop ROS2
     follow_node.lifecycleShutdown()
     exit(0)
+
 
 if __name__ == '__main__':
     main()
