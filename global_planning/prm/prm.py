@@ -18,7 +18,7 @@ Z = 0.0  # z coordinate for the graph display
 ALPHA = 0.25  # alpha value for graph transparency
 
 
-class PRM(OccupancyGridMap):
+class PRM:
     def __init__(
             self,
             costmap: Costmap,
@@ -44,16 +44,16 @@ class PRM(OccupancyGridMap):
             None
         """
         # Convert the costmap to an occupancy grid map
-        map = OccupancyGrid()
-        map.header = costmap.header
-        map.info.map_load_time = costmap.metadata.map_load_time
-        map.info.resolution = costmap.metadata.resolution
-        map.info.width = costmap.metadata.size_x
-        map.info.height = costmap.metadata.size_y
-        map.info.origin = costmap.metadata.origin
-        map.data = costmap.data
-
-        super(PRM, self).from_msg(map)
+        og = OccupancyGrid()
+        og.header = costmap.header
+        og.info.map_load_time = costmap.metadata.map_load_time
+        og.info.resolution = costmap.metadata.resolution
+        og.info.width = costmap.metadata.size_x
+        og.info.height = costmap.metadata.size_y
+        og.info.origin = costmap.metadata.origin
+        og.data = np.array(costmap.data).astype(np.int8).flatten().tolist()
+        og.data[og.data == 127] = -1  # unknown
+        self.ogm = OccupancyGridMap.from_msg(og)
 
         # Check inputs
         if publisher is not None and clock is None:
@@ -115,11 +115,11 @@ class PRM(OccupancyGridMap):
             ##### YOUR CODE ENDS HERE   ##### # noqa: E266
             # Display graph as it is being built
             if self.publisher is not None and i % self.publish_every_n == self.publish_every_n - 1:
-                self.publisher.publish(self.to_msg(clock=self.clock))
+                self.publisher.publish(self.to_msg())
 
         # Show final set of nodes
         if (self.publisher is not None) and (i % self.publish_every_n != self.publish_every_n - 1):
-            self.publisher.publish(self.to_msg(clock=self.clock))
+            self.publisher.publish(self.to_msg())
 
         # Initialize KD tree for quickly finding nearest node
         pts = np.array([p for _, p in self.graph.nodes.data('location')])
@@ -136,10 +136,9 @@ class PRM(OccupancyGridMap):
         #    https://docs.scipy.org/doc/scipy/reference/generated/scipy.spatial.KDTree.html
         pass
         ##### YOUR CODE ENDS HERE   ##### # noqa: E266
-
         # Show final graph with edges
         if self.publisher is not None:
-            self.publisher.publish(self.to_msg(clock=self.clock))
+            self.publisher.publish(self.to_msg())
 
     def sample_free_point(self) -> np.array:
         """
@@ -224,7 +223,7 @@ class PRM(OccupancyGridMap):
 
         # Create marker to show the nodes in the graph
         points_marker = Marker()
-        points_marker.header.frame_id = self.frame_id
+        points_marker.header.frame_id = self.ogm.frame_id
         points_marker.header.stamp = self.clock.now().to_msg()
         points_marker.ns = 'points'
         points_marker.type = Marker.SPHERE_LIST
@@ -242,7 +241,7 @@ class PRM(OccupancyGridMap):
 
         # Create marker to show the edges in the graph
         edges_marker = Marker()
-        edges_marker.header.frame_id = self.frame_id
+        edges_marker.header.frame_id = self.ogm.frame_id
         edges_marker.header.stamp = points_marker.header.stamp
         edges_marker.ns = 'edges'
         edges_marker.type = Marker.LINE_LIST

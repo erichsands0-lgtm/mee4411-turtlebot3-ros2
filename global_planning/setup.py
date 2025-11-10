@@ -1,3 +1,5 @@
+import os
+from glob import glob
 from setuptools import find_packages, setup
 
 package_name = 'global_planning'
@@ -24,7 +26,8 @@ setup(
     },
     entry_points={
         'console_scripts': [
-            'prm_node = global_planning.prm_node:main',
+            'costmap_2d_node = costmap2d.costmap_2d:main',
+            'prm_node = prm.prm_node:main',
         ],
     },
 )
