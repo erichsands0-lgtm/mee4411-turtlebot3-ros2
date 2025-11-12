@@ -18,7 +18,7 @@ from datetime import datetime
 import numpy as np
 
 from costmap2d import Costmap2D
-from global_planning import PRM
+from prm import PRM
 from transform2d_utils import lookup_transform
 
 
@@ -111,6 +111,7 @@ class PRMNode(LifecycleNode):
         self.prm = PRM(
             costmap=self.costmap_node.get_costmap(),
             clock=self.get_clock(),
+            logger=self.get_logger(),
             publisher=self.marker_pub,
             **self.prm_params)
 

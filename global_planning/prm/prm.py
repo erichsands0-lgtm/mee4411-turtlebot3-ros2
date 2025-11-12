@@ -26,6 +26,7 @@ class PRM:
             connection_radius: float,
             step_size: float,
             *,
+            logger = None,
             publisher: Publisher = None,
             publish_every_n: int = 20,
             clock: Clock = None) -> None:
@@ -56,6 +57,7 @@ class PRM:
         self.ogm = OccupancyGridMap.from_msg(og)
 
         # Check inputs
+        self.logger = logger
         if publisher is not None and clock is None:
             raise Exception('Clock is required when publishing')
         self.publisher = publisher

@@ -6,7 +6,7 @@ from rclpy.time import Time
 from rcl_interfaces.msg import ParameterDescriptor, ParameterType
 import tf2_ros
 
-from builtin_interfaces.msg import TimeMsg
+from builtin_interfaces.msg import Time as TimeMsg
 from geometry_msgs.msg import (
     PoseWithCovarianceStamped,
     Transform,
@@ -148,6 +148,9 @@ class ICPLocalizationNode(Node):
         self.have_transform = True
         self.get_logger().info(
             f'Got transform from {self.tf_map_odom.child_frame_id} to {self.sensor_frame_id}')
+
+        # Publish the initial transform
+        self.publish_map_odom_tf(self.get_clock().now().to_msg())
 
     def initialize_icp(self, map: OccupancyGrid) -> None:
         """
