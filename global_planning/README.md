@@ -177,13 +177,19 @@ source install/setup.bash
 
 2. Add your node to the [launch file](../mee4411_simulation/launch/simulation.xml) under the `<!-- Global planning -->` heading. Note, there is a new argument to the launch file called `use_nav2_planner` with the intended behavior of launching *your* planner node if it is set to `false` and using the built in navigation 2 planner node if it is set to `true` (hint: look at the `if` and `unless` tags for a node in the [launch file description](https://design.ros2.org/articles/roslaunch_xml.html)).
 
-4. Test path planning with Navigation2:
+3. Test path planning with Navigation2:
 
 ```bash
 ros2 launch mee4411_simulation simulation.xml
 ```
 
-You can then use rviz to send navigation goals or call the action servers directly.
+4. Send a goal to the robot using the tool in `rviz`
+
+![screenshot of RVIZ window with the 2D Goal Pose tool highlighted](rviz.png)
+
+Once you send a goal, you should see a path appear and the robot will follow it:
+
+![screenshot of RVIZ window showing the robot following a path](path_following.png)
 
 # Suggested development & debugging order
 

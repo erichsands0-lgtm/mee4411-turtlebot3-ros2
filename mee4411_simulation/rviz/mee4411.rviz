@@ -440,8 +440,7 @@ Visualization Manager:
       Enabled: true
       Name: PRM
       Namespaces:
-        edges: true
-        points: true
+        {}
       Topic:
         Depth: 5
         Durability Policy: Transient Local
@@ -495,16 +494,16 @@ Visualization Manager:
   Views:
     Current:
       Class: rviz_default_plugins/Orbit
-      Distance: 11.20346450805664
+      Distance: 13.148062705993652
       Enable Stereo Rendering:
         Stereo Eye Separation: 0.05999999865889549
         Stereo Focal Distance: 1
         Swap Stereo Eyes: false
         Value: false
       Focal Point:
-        X: -2.9435226917266846
-        Y: 4.208159923553467
-        Z: -3.415743589401245
+        X: -2.755866289138794
+        Y: 2.368898868560791
+        Z: -2.597867012023926
       Focal Shape Fixed Size: true
       Focal Shape Size: 0.05000000074505806
       Invert Z Axis: false
@@ -531,5 +530,5 @@ Window Geometry:
   Views:
     collapsed: false
   Width: 1268
-  X: 303
-  Y: 26
+  X: 988
+  Y: 370

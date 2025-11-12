@@ -27,7 +27,7 @@
          default="True"
          description="Whether map conversions have been implemented"/>
     <arg name="use_nav2_planner"
-         default="False"
+         default="True"
          description="Whether to use nav2 planner"/>
     <arg name="use_sim_time"
          default="False"
