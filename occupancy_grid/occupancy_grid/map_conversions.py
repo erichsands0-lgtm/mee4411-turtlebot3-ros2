@@ -156,5 +156,3 @@ class MapConversions:
         """
         rows, cols = self.ind2sub(inds)
         return self.sub2xy(rows, cols)
-     
-     
