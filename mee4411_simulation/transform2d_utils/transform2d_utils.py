@@ -2,6 +2,9 @@ from geometry_msgs.msg import Transform
 
 import numpy as np
 from typing import Tuple
+from tf_transformations import quaternion_from_euler, euler_from_quaternion
+
+
 
 
 def transform2xyt(T: Transform) -> Tuple[float, float, float]:
@@ -17,7 +20,10 @@ def transform2xyt(T: Transform) -> Tuple[float, float, float]:
     """
     ##### YOUR CODE STARTS HERE ##### # noqa: E266
     # TODO fill x, y, theta in with correct values
-    x = y = theta = 0.0
+    x = T.translation.x
+    y = T.translation.y
+    q = T.rotation
+    _, _, theta = euler_from_quaternion([q.x, q.y, q.z, q.w])
     ##### YOUR CODE ENDS HERE ##### # noqa: E266
     return (x, y, theta)
 
@@ -36,7 +42,14 @@ def xyt2transform(x: float, y: float, theta: float) -> Transform:
     T = Transform()
     ##### YOUR CODE STARTS HERE ##### # noqa: E266
     # TODO fill in the transform
-    pass
+    T.translation.x = x
+    T.translation.y = y
+    T.translation.z = 0.0
+    q = quaternion_from_euler(0, 0, theta)
+    T.rotation.x = q[0]
+    T.rotation.y = q[1]
+    T.rotation.z = q[2]
+    T.rotation.w = q[3]
     ##### YOUR CODE ENDS HERE ##### # noqa: E266
     return T
 
@@ -54,7 +67,9 @@ def homogeneous2xyt(T: np.ndarray) -> Tuple[float, float, float]:
     """
     ##### YOUR CODE STARTS HERE ##### # noqa: E266
     # TODO fill in x, y, theta with correct values
-    x = y = theta = 0.0
+    x = T[0, 2]
+    y = T[1, 2]
+    theta = np.arctan2(T[1, 0], T[0, 0])
     ##### YOUR CODE ENDS HERE ##### # noqa: E266
     return (x, y, theta)
 
@@ -72,9 +87,16 @@ def xyt2homogeneous(x: float, y: float, theta: float) -> Tuple[np.ndarray]:
     """
     ##### YOUR CODE STARTS HERE ##### # noqa: E266
     # TODO fill in with the correct formula
-    T = np.zeros((3, 3))
+    cos_theta = np.cos(theta)
+    sin_theta = np.sin(theta)
+    return np.array([
+        [cos_theta, -sin_theta, x],
+        [sin_theta,  cos_theta, y],
+        [0,          0,         1]
+    ])
+
     ##### YOUR CODE ENDS HERE ##### # noqa: E266
-    return T
+    
 
 
 def transform2homogeneous(T: Transform) -> np.ndarray:
