@@ -101,8 +101,6 @@ class ICP2D:
         # Get number of dimensions and ensure that it is correct
         m = pts.shape[0]
         assert m == 2, 'Points must be formatted as 2xN numpy arrays'
-        m = pts.shape[1]
-        assert m == 2, 'Points must be formatted as Nx2 numpy arrays'
 
         # Initialize the transformation
         T = np.eye(3)  # initialize identity transformation

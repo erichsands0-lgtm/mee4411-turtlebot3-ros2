@@ -1,4 +1,3 @@
-from rclpy.time import Time
 from sensor_msgs.msg import JointState
 
 import numpy as np
