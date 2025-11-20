@@ -99,6 +99,9 @@ class MapConversions:
 
         col = np.array(np.floor((x - self.boundary[0]) / self.resolution))
         row = np.array(np.floor((y - self.boundary[1]) / self.resolution))
+        ncols = int(np.ceil((self.boundary[2] - self.boundary[0]) / self.resolution))
+        nrows = int(np.ceil((self.boundary[3] - self.boundary[1]) / self.resolution))
+
         ## Look for top/right edge cases
         # Top Edge
         edge1=self.boundary[3]
@@ -106,16 +109,19 @@ class MapConversions:
         edge2=self.boundary[2]
 
         mask1 = (y == edge1)  
-        row[mask1] = row[mask1] -1
+        row[mask1 & (row >= nrows)] = nrows - 1
 
+        # check if x or y is on the edge of the map
+        # check if the edge of the map lines up with the edge of cell
         mask2 = (x == edge2)
-        col[mask2] = col[mask2] -1
+        col[mask2 & (col >= ncols)] = ncols - 1
+
         # invalid coordinates out the bottom
         mask = ( y < self.boundary[1]) |  ( x < self.boundary[0]) | ( y > self.boundary[3]) |  ( x > self.boundary[2]) | (np.isnan(y)) |(np.isnan(x))
         row[mask] = -1
         col[mask] = -1
-        col = col.astype('int')
-        row = row.astype('int')
+        col = col.astype(int)
+        row = row.astype(int)
          ##### YOUR CODE ENDS HERE   ##### # noqa: E266
         return row, col
 
