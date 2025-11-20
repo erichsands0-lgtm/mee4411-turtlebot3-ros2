@@ -22,8 +22,8 @@ def transform2xyt(T: Transform) -> Tuple[float, float, float]:
     # TODO fill x, y, theta in with correct values
     x = T.translation.x
     y = T.translation.y
-    q = T.rotation
-    _, _, theta = euler_from_quaternion([q.x, q.y, q.z, q.w])
+    q_z = T.rotation.z
+    theta = np.arcsin(q_z) * 2 
     ##### YOUR CODE ENDS HERE ##### # noqa: E266
     return (x, y, theta)
 
