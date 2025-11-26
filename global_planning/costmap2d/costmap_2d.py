@@ -7,7 +7,6 @@ from rclpy.lifecycle import (
     TransitionCallbackReturn,
 )
 from rclpy import qos
-from rcl_interfaces.msg import ParameterDescriptor, ParameterType
 from tf2_ros import Buffer, TransformListener
 
 from geometry_msgs.msg import Point, Polygon, PolygonStamped
@@ -31,63 +30,40 @@ import numpy as np
 
 
 class Costmap2D(LifecycleNode):
-    def __init__(self, use_sim_time: bool = False) -> None:
+    def __init__(
+            self,
+            costmap_name: str = 'global'
+    ) -> None:
         super().__init__(
-            'global_costmap',
-            namespace='global_costmap',
+            costmap_name + '_costmap',
+            namespace=costmap_name + '_costmap',
             use_global_arguments=False)
         self.active = False
+        self.costmap_name = costmap_name
+        self.params_set = False
 
-        # Declare parameters
-        self.declare_parameter(
-            'tb3_model',
-            'burger',
-            descriptor=ParameterDescriptor(
-                type=ParameterType.PARAMETER_STRING,
-                description='TurtleBot3 model type (burger, waffle, waffle_pi)'))
-        self.declare_parameter(
-            'occ_threshold',
-            50,
-            descriptor=ParameterDescriptor(
-                type=ParameterType.PARAMETER_INTEGER,
-                description='Occupancy threshold for binarizing the map'))
-        self.declare_parameter(
-            'always_send_full_costmap',
-            False,
-            descriptor=ParameterDescriptor(
-                type=ParameterType.PARAMETER_BOOL,
-                description='Whether to always send the full costmap on updates'))
-        self.declare_parameter(
-            'footprint_padding',
-            0.0,
-            descriptor=ParameterDescriptor(
-                type=ParameterType.PARAMETER_DOUBLE,
-                description='Padding to add to the robot footprint'))
-        self.declare_parameter(
-            'robot_base_frame',
-            'base_footprint',
-            descriptor=ParameterDescriptor(
-                type=ParameterType.PARAMETER_STRING,
-                description='The robot base frame for the costmap'))
-        self.declare_parameter(
-            'publish_frequency',
-            1.0,
-            descriptor=ParameterDescriptor(
-                type=ParameterType.PARAMETER_DOUBLE,
-                description='Frequency at which to publish the costmap'))
+    def set_costmap_parameters(
+            self,
+            tb3_model: str = 'burger',
+            occ_threshold: int = 50,
+            always_send_full_costmap: bool = False,
+            footprint_padding: float = 0.0,
+            robot_base_frame: str = 'base_footprint'
+    ) -> None:
+        self.robot_params = TB3Params(tb3_model)
+        self.occ_threshold = occ_threshold
+        self.always_send_full_costmap = always_send_full_costmap
+        self.footprint_padding = footprint_padding
+        self.robot_base_frame = robot_base_frame
+        self.params_set = True
 
     def on_configure(self, state: State) -> TransitionCallbackReturn:
         super().on_configure(state)
         self.get_logger().info("Configuring Costmap2D node...")
 
         # Get parameters
-        self.get_logger().info(f"{self.get_parameter('tb3_model').value}")
-        self.robot_params = TB3Params(self.get_parameter('tb3_model').value)
-        self.always_send_full_costmap = self.get_parameter('always_send_full_costmap').value
-        self.footprint_padding = self.get_parameter('footprint_padding').value
-        self.robot_base_frame = self.get_parameter('robot_base_frame').value
-        self.publish_frequency = self.get_parameter('publish_frequency').value
-        self.occ_threshold = self.get_parameter('occ_threshold').value
+        if not self.params_set:
+            self.set_costmap_parameters()
 
         # Create robot footprint polygon
         self.robot_footprint = Polygon()
@@ -142,7 +118,7 @@ class Costmap2D(LifecycleNode):
             self.clear_except_region_callback)
         self.clear_entire_costmap_server = self.create_service(
             ClearEntireCostmap,
-            'clear_entirely_global_costmap',
+            'clear_entirely_' + self.costmap_name + '_costmap',
             self.clear_entire_callback)
 
         self.get_logger().info("Costmap2D configured.")
@@ -154,6 +130,8 @@ class Costmap2D(LifecycleNode):
         # Get map
         self.lock = Lock()
         self.have_map = False
+        self.map = None
+        self.costmap = None
 
         # Make sure map client is active
         if not self.ensure_server_active('/map_server'):
@@ -178,6 +156,8 @@ class Costmap2D(LifecycleNode):
             spin_once(future)
             with self.lock:
                 ready = self.have_map
+        self.costmap_pub.publish(self.map)
+        self.costmap_raw_pub.publish(self.costmap)
 
         # Set active flag
         self.active = True
@@ -256,13 +236,6 @@ class Costmap2D(LifecycleNode):
             3) Use the inflated map to create a PRM
         """
         self.get_logger().info('Received map for costmap generation.')
-        costmap = Costmap()
-        costmap.header = msg.header
-        costmap.metadata.map_load_time = msg.info.map_load_time
-        costmap.metadata.resolution = msg.info.resolution
-        costmap.metadata.size_x = msg.info.width
-        costmap.metadata.size_y = msg.info.height
-        costmap.metadata.origin = msg.info.origin
 
         # Convert map to numpy array
         img = np.array(msg.data, dtype=np.int8)
@@ -270,32 +243,44 @@ class Costmap2D(LifecycleNode):
 
         # Shift map values up by 1 to ensure non-negative
         img += 1  # put unknown at 0
-        thresh = self.occ_threshold + 1
-        max_val = np.uint8(100) + 1
-        min_val = np.uint8(0) + 1
 
-        # Binarize occupancy grid
-        img = img.astype(np.uint8)  # convert to uint8 to use dilate
-        img[np.logical_and(img >= thresh, img <= max_val)] = max_val
-        img[np.logical_and(img >= min_val, img < thresh)] = min_val
+        # Convert to uint8 to use OpenCV
+        img = img.astype(np.uint8)
+        img[ind_unknown] = 0
 
         # Convert to 2D image
         img = img.reshape((msg.info.height, msg.info.width))
 
         # Get robot kernel (i.e., shape)
-        r = np.int8(np.ceil(self.robot_params.robot_radius / msg.info.resolution))
+        r = np.int8(np.ceil(
+            (self.robot_params.robot_radius + self.footprint_padding) / msg.info.resolution
+        ))
         robot_img = cv.getStructuringElement(cv.MORPH_ELLIPSE, (2*r+1, 2*r+1), (r, r))
 
         # Inflate obstacles using dilate function
-        img = cv.dilate(img, robot_img)
+        dilated_img = cv.dilate(img, robot_img)
 
         # Update map data
-        img = img.flatten().astype(np.int8) - 1  # shift values back down
-        img[np.logical_and(ind_unknown, img == 0)] = -1  # put unknown back to -1
-        img[img < 0] = 127  # unknown to 127 for costmap
-        costmap.data = img.astype(np.uint8).tolist()
+        array = dilated_img.flatten().astype(np.int8) - 1  # shift values back down
+
+        # Create map
+        ogm = msg
+        ogm.data = array.tolist()
+
+        # Fill in costmap
+        costmap = Costmap()
+        costmap.header = msg.header
+        costmap.metadata.map_load_time = msg.info.map_load_time
+        costmap.metadata.resolution = msg.info.resolution
+        costmap.metadata.size_x = msg.info.width
+        costmap.metadata.size_y = msg.info.height
+        costmap.metadata.origin = msg.info.origin
+        array = array.astype(np.uint8)
+        array[ind_unknown] = 255  # unknown to 255 for costmap
+        costmap.data = array.tolist()
 
         with self.lock:
+            self.map = ogm
             self.costmap = costmap
             self.have_map = True
             self.get_logger().info('Costmap generated successfully.')
@@ -304,6 +289,11 @@ class Costmap2D(LifecycleNode):
         """Get the current costmap."""
         with self.lock:
             return self.costmap
+
+    def get_map(self) -> OccupancyGrid:
+        """Get the current occupancy grid."""
+        with self.lock:
+            return self.map
 
     def get_map_frame_id(self) -> str:
         """Get the frame ID of the map."""
