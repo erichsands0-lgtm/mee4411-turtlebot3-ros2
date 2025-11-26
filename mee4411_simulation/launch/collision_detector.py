@@ -12,13 +12,7 @@ def generate_launch_description():
         default_value='False',
         description='Bool: whether map conversions have been implemented'
     )
-    arg_use_sim_time = DeclareLaunchArgument(
-        'use_sim_time',
-        default_value='False',
-        description='Bool: whether to use simulation time'
-    )
 
-    sim_namespace = LaunchConfiguration('sim_namespace')
     arg_sim_namespace = DeclareLaunchArgument(
         'sim_namespace',
         default_value='ground_truth/',
@@ -32,15 +26,13 @@ def generate_launch_description():
         emulate_tty=True,  # for colored output
         parameters=[
             {'tb3_model': EnvironmentVariable('TURTLEBOT3_MODEL')},
-            {'map_conversions_implemented': False},
-            {'use_sim_time': False},
-            {'robot_frame_id': [sim_namespace, 'base_footprint']},
+            {'map_conversions_implemented': LaunchConfiguration('map_conversions_implemented')},
+            {'robot_frame_id': [LaunchConfiguration('sim_namespace'), 'base_footprint']},
         ]
     )
 
     return LaunchDescription([
         arg_map_conversions_implemented,
-        arg_use_sim_time,
         collision_detector,
         arg_sim_namespace,
         RegisterEventHandler(

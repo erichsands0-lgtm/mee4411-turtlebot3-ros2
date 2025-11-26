@@ -37,7 +37,6 @@ def generate_launch_description():
 
     # Parameters
     lifecycle_nodes = ['map_server']
-    use_sim_time = True
     autostart = True  # Nodes launching commands
 
     start_map_server = Node(
@@ -49,6 +48,7 @@ def generate_launch_description():
             {'frame_id': "map"},
             {'topic_name': "map"},
             {'yaml_filename': map_filename},
+            {'use_sim_time': use_sim_time},
         ],
     )
 

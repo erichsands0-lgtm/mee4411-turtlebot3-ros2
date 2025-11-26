@@ -38,6 +38,7 @@ def generate_launch_description():
     log_level = LaunchConfiguration('log_level')
 
     use_planner = LaunchConfiguration('use_planner')
+    use_controller = LaunchConfiguration('use_controller')
 
     lifecycle_nodes = ['map_server',
                        'controller_server',
@@ -108,8 +109,15 @@ def generate_launch_description():
         'use_planner', default_value='True',
         description='Whether to launch planner server.')
 
+    use_controller_cmd = DeclareLaunchArgument(
+        'use_controller', default_value='True',
+        description='Whether to launch controller server.')
+
     if not use_planner:
         lifecycle_nodes.remove('planner_server')
+
+    if not use_controller:
+        lifecycle_nodes.remove('controller_server')
 
     load_nodes = GroupAction(
         actions=[
@@ -125,6 +133,7 @@ def generate_launch_description():
                 arguments=['--ros-args', '--log-level', log_level],
                 remappings=remappings),
             Node(
+                condition=IfCondition(use_controller),
                 package='nav2_controller',
                 executable='controller_server',
                 output='screen',
@@ -224,6 +233,7 @@ def generate_launch_description():
     ld.add_action(declare_use_respawn_cmd)
     ld.add_action(declare_log_level_cmd)
     ld.add_action(use_planner_cmd)
+    ld.add_action(use_controller_cmd)
     # Add the actions to launch all of the navigation nodes
     ld.add_action(load_nodes)
 

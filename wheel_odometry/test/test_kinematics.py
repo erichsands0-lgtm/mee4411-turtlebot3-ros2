@@ -15,10 +15,12 @@ def test_calculate_wheel_change():
     js_prev = JointState()
     js_prev.header.stamp = Time().to_msg()
     js_prev.position = [0., 0.]
+    js_prev.name = ['wheel_left_joint', 'wheel_right_joint']
 
     js_new = JointState()
     js_new.header.stamp = (Time.from_msg(js_prev.header.stamp) + Duration(seconds=1.0)).to_msg()
     js_new.position = [0.5, -0.75]
+    js_new.name = ['wheel_left_joint', 'wheel_right_joint']
 
     # Desired outputs
     delta_wheel_l_true = 0.5

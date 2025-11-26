@@ -82,8 +82,8 @@ class ICP2D:
     def icp(self,
             pts: np.ndarray,
             init_pose: Optional[Union[np.array, None]] = None,
-            max_iterations: Optional[int] = 20, tolerance: Optional[float] = 0.05
-            ) -> Tuple[np.ndarray, np.array, int]:
+            max_iterations: Optional[int] = 20,
+            tolerance: Optional[float] = 0.05) -> Tuple[np.ndarray, np.array, int]:
         """
         Find the best-fit transform that maps points A on to points B using ICP.
 
