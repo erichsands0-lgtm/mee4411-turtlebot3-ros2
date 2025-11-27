@@ -122,9 +122,11 @@ def load_cnn_params(file):
     assert 'loss_function' in params.keys()
     assert params['loss_function'] in ['MAE', 'MSE']
 
-    assert 'learning_rate' in params.keys()
-    assert isinstance(params['learning_rate'], float) and \
-        (0.0 < params['learning_rate'] < 1.0)
+    assert 'learning_rate_exp' in params.keys()
+    assert isinstance(params['learning_rate_exp'], float) and \
+        (-6.0 <= params['learning_rate_exp'] <= 0.0)
+    params['learning_rate'] = 10 ** params['learning_rate_exp']
+    del params['learning_rate_exp']
 
     return params
 

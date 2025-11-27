@@ -22,10 +22,10 @@ batch_size: 2
 #   options: MSE (mean squared error), MAE (mean absolute error)
 loss_function: 'MSE'
 
-# Choose baseline learning rate
-#   options: 0 < learning_rate < 1
+# Choose baseline learning rate exponent
+#   options: -6.0 <= learning_rate_exp < 0.0
 #   Note: You also need to implement the learning rate decay function
-learning_rate: 0.1
+learning_rate_exp: -1.0
 
 # Choose how often to save the learned model (# epochs)
 #   options: >0
