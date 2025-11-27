@@ -21,11 +21,7 @@ pip3 install torch==2.4.0 torchvision==0.19.0 torchaudio==2.4.0 --index-url http
 pip3 install tensorboardX
 ```
 
-This will ensure that you have compatible versions of the different libraries. Note, this installs a CPU version of PyTorch, which should work on any computer. If you have a GPU and want to use that instead, you can replace the second line above with the following:
-
-```bash
-TODO INSERT LINK HERE
-```
+This will ensure that you have compatible versions of the different libraries. Note, this installs a CPU version of PyTorch, which should work on any computer. If you have a GPU and want to use that instead, you can replace the second line above with a [different command](https://pytorch.org/get-started/previous-versions/#:~:text=0.19.0%20torchaudio%3D%3D2.4.0-,LINUX%20AND%20WINDOWS,-%23%20ROCM%206.1%20(Linux) (based on the version of the CUDA library that you have installed).
 
 Standard ROS2 packages are also required at runtime (rclpy, tf2_ros, nav2, various messages, etc.).
 
@@ -43,7 +39,7 @@ This directory contains the following files and folders:
 
 ## [`goal_checker`](goal_checker) Python Package
 
-This package provides a simple checker to determine if the robot's position is close to the desired goal. This is based on the TODO INSERT LINK HERE
+This package provides a simple checker to determine if the robot's position is close to the desired goal. This is based on the [Goal Checker in `nav2`](https://docs.nav2.org/plugins/index.html#goal-checkers).
 
 - [`goal_checker/__init__.py`](goal_checker/__init__.py): Initializes the `goal_checker` Python package.
 - [`goal_checker/goal_checker.py`](goal_checker/goal_checker.py): Implementation (class `GoalChecker`). Checks if the robot is within a given tolerance of the goal position.
