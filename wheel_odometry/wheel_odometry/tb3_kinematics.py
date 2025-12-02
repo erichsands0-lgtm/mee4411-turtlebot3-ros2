@@ -28,9 +28,17 @@ class TB3Kinematics(TB3Params):
         """
         ##### YOUR CODE STARTS HERE ##### # noqa: E266
         # TODO Calculate the output values
-        delta_wheel_l = 0.0
-        delta_wheel_r = 0.0
-        delta_time = 0.0
+        new_lp = new_joint_states.position[0]
+        old_lp = prev_joint_states.position[0]
+        delta_wheel_l = new_lp - old_lp
+
+        new_rp = new_joint_states.position[1]
+        old_rp = prev_joint_states.position[1]
+        delta_wheel_r = new_rp - old_rp
+        
+        new_t = new_joint_states.header.stamp.sec + new_joint_states.header.stamp.nanosec * 1e-9
+        old_t = prev_joint_states.header.stamp.sec + prev_joint_states.header.stamp.nanosec * 1e-9
+        delta_time = new_t-old_t
         ##### YOUR CODE ENDS HERE   ##### # noqa: E266
 
         # Data validation
@@ -57,8 +65,11 @@ class TB3Kinematics(TB3Params):
         """
         ##### YOUR CODE STARTS HERE ##### # noqa: E266
         # TODO Calculate the output values
-        delta_s = 0.0  # linear displacement [m]
-        delta_theta = 0.0  # angular displacement [rad]
+        d_left = delta_wheel_l * self.wheel_radius
+        d_right = delta_wheel_r * self.wheel_radius
+
+        delta_s = (d_right + d_left) / 2.0 # linear displacement [m]
+        delta_theta = (d_right - d_left) / self.wheel_separation # angular displacement [rad]
         ##### YOUR CODE ENDS HERE   ##### # noqa: E266
 
         return (delta_s, delta_theta)
@@ -80,7 +91,13 @@ class TB3Kinematics(TB3Params):
         """
         ##### YOUR CODE STARTS HERE ##### # noqa: E266
         # TODO Calculate the output values
-        pose = prev_pose  # FILL THIS IN
+        x, y, theta = prev_pose
+
+        x_new = x + delta_s * np.cos(theta + 0.5 * delta_theta)
+        y_new = y + delta_s * np.sin(theta + 0.5 * delta_theta)
+        theta_new =  theta + delta_theta
+
+        pose = x_new , y_new, theta_new
         ##### YOUR CODE ENDS HERE   ##### # noqa: E266
 
         return pose
