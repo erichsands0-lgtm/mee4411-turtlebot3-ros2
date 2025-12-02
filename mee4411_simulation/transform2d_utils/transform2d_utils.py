@@ -2,7 +2,6 @@ from geometry_msgs.msg import Transform
 
 import numpy as np
 from typing import Tuple
-from tf_transformations import quaternion_from_euler, euler_from_quaternion
 
 
 
@@ -20,10 +19,11 @@ def transform2xyt(T: Transform) -> Tuple[float, float, float]:
     """
     ##### YOUR CODE STARTS HERE ##### # noqa: E266
     # TODO fill x, y, theta in with correct values
+    # AI Prompt: "How to convert from a quaternion to a singular theta value in Python using Numpy"
     x = T.translation.x
     y = T.translation.y
-    q_z = T.rotation.z
-    theta = np.arcsin(q_z) * 2 
+    q_w = T.rotation.w
+    theta = np.arccos(q_w) * 2 
     ##### YOUR CODE ENDS HERE ##### # noqa: E266
     return (x, y, theta)
 
@@ -42,14 +42,14 @@ def xyt2transform(x: float, y: float, theta: float) -> Transform:
     T = Transform()
     ##### YOUR CODE STARTS HERE ##### # noqa: E266
     # TODO fill in the transform
+    # AI Prompt: "How to convert from a singular theta value to a quaternion in Python using Numpy"
     T.translation.x = x
     T.translation.y = y
     T.translation.z = 0.0
-    q = quaternion_from_euler(0, 0, theta)
-    T.rotation.x = q[0]
-    T.rotation.y = q[1]
-    T.rotation.z = q[2]
-    T.rotation.w = q[3]
+    T.rotation.x = 0.0
+    T.rotation.y = 0.0
+    T.rotation.z = np.sin(theta/2)
+    T.rotation.w = np.cos(theta/2)
     ##### YOUR CODE ENDS HERE ##### # noqa: E266
     return T
 
