@@ -1,6 +1,8 @@
 import rclpy
-from rclpy.node import Node
+from rclpy import ok
 from rclpy.duration import Duration
+from rclpy.executors import MultiThreadedExecutor
+from rclpy.node import Node
 from rclpy.qos import QoSProfile, QoSDurabilityPolicy
 from rclpy.time import Time
 from rcl_interfaces.msg import ParameterDescriptor, ParameterType
@@ -12,6 +14,8 @@ from geometry_msgs.msg import (
     Transform,
     TransformStamped
 )
+from lifecycle_msgs.msg import State as StateMsg
+from lifecycle_msgs.srv import GetState
 from sensor_msgs.msg import LaserScan
 from nav_msgs.msg import OccupancyGrid
 from nav_msgs.srv import GetMap
@@ -111,7 +115,7 @@ class ICPLocalizationNode(Node):
                 qos_profile=latching_qos)
         else:
             # Get map from map server
-            map_client = self.create_client(GetMap, 'map_server/map')
+            map_client = self.get_map_client()
             map_client.wait_for_service()
             self.get_clock().sleep_for(Duration(seconds=1.0))
             future = map_client.call_async(GetMap.Request())
@@ -151,6 +155,31 @@ class ICPLocalizationNode(Node):
 
         # Publish the initial transform
         self.publish_map_odom_tf(self.get_clock().now().to_msg())
+
+    def get_map_client(self):
+        """Ensure that the given lifecycle node is active."""
+        client = self.create_client(
+            GetState,
+            'map_server/get_state',)
+        while not client.wait_for_service(timeout_sec=1.0):
+            self.get_logger().info(
+                'Map Server not available, waiting...',
+                throttle_duration_sec=5.0
+            )
+        # Wait for the server to be active
+        while ok():
+            future = client.call_async(GetState.Request())
+            rclpy.spin_until_future_complete(self, future)
+            if future.result() is not None:
+                current_state = future.result().current_state
+                if current_state.id == StateMsg.PRIMARY_STATE_ACTIVE:
+                    break
+            self.get_logger().warning(
+                'Map Server not ready, waiting...',
+                throttle_duration_sec=5.0
+            )
+        self.get_logger().info('Map server is active!')
+        return self.create_client(GetMap, '/map_server/map')
 
     def initialize_icp(self, map: OccupancyGrid) -> None:
         """
@@ -272,6 +301,7 @@ class ICPLocalizationNode(Node):
             3. Update self.pose with the new pose
         """
         # Make sure the node is ready
+        t_start = self.get_clock().now()
         with self.lock:
             if self.sensor_frame_id is None:
                 self.sensor_frame_id = msg.header.frame_id
@@ -316,12 +346,20 @@ def main(args=None):
     # Create the node
     icp_node = ICPLocalizationNode()
 
-    # Let the node run until it is killed
-    rclpy.spin(icp_node)
+    # Create a multi-threaded executor
+    executor = MultiThreadedExecutor()
+    executor.add_node(icp_node)
 
-    # Clean up the node and stop ROS2
-    icp_node.destroy_node()
-    rclpy.shutdown()
+    try:
+        # Spin the executor to process callbacks from all added nodes
+        executor.spin()
+    except KeyboardInterrupt:
+        pass
+    finally:
+        # Shutdown and destroy nodes
+        executor.shutdown()
+        icp_node.destroy_node()
+        rclpy.shutdown()
 
 
 if __name__ == '__main__':

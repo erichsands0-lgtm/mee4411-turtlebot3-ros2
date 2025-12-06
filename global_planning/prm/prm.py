@@ -1,8 +1,7 @@
 from rclpy.clock import Clock
 from rclpy.publisher import Publisher
 
-from geometry_msgs.msg import Point
-from nav2_msgs.msg import Costmap
+from geometry_msgs.msg import Point, Pose, PoseStamped, Quaternion
 from nav_msgs.msg import OccupancyGrid, Path
 from visualization_msgs.msg import Marker, MarkerArray
 
@@ -21,12 +20,12 @@ ALPHA = 0.25  # alpha value for graph transparency
 class PRM:
     def __init__(
             self,
-            costmap: Costmap,
+            costmap: OccupancyGrid,
             num_points: int,
             connection_radius: float,
             step_size: float,
             *,
-            logger = None,
+            logger=None,
             publisher: Publisher = None,
             publish_every_n: int = 20,
             clock: Clock = None) -> None:
@@ -44,17 +43,9 @@ class PRM:
         Outputs:
             None
         """
-        # Convert the costmap to an occupancy grid map
-        og = OccupancyGrid()
-        og.header = costmap.header
-        og.info.map_load_time = costmap.metadata.map_load_time
-        og.info.resolution = costmap.metadata.resolution
-        og.info.width = costmap.metadata.size_x
-        og.info.height = costmap.metadata.size_y
-        og.info.origin = costmap.metadata.origin
-        og.data = np.array(costmap.data).astype(np.int8).flatten().tolist()
-        og.data[og.data == 127] = -1  # unknown
-        self.ogm = OccupancyGridMap.from_msg(og)
+        # Create OGM object
+        logger.info('initialize PRM')
+        self.ogm = OccupancyGridMap.from_msg(costmap)
 
         # Check inputs
         self.logger = logger
@@ -103,6 +94,8 @@ class PRM:
             the edge between them is valid (i.e., not in collision).
         """
         # First, add points to the graph
+        if self.logger is not None:
+            self.logger.info(f'Adding {num_points} points to PRM')
         for i in tqdm(range(num_points)):  # Wrap in tqdm for progress bar
             ##### YOUR CODE STARTS HERE ##### # noqa: E266
             # TODO Generate valid point in free space

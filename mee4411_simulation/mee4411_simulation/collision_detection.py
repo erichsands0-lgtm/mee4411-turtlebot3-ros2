@@ -74,6 +74,10 @@ class CollisionDetectionNode(Node):
         self.occupancy_threshold = \
             self.get_parameter('occupancy_threshold').get_parameter_value().integer_value
 
+        # Set required data
+        self.have_map = False
+        self.have_transform = False
+
         # Map
         self.lock = Lock()
         self.map_frame_id = None

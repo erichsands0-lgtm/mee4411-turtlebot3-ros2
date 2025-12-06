@@ -29,6 +29,9 @@
     <arg name="use_nav2_planner"
          default="True"
          description="Whether to use nav2 planner"/>
+    <arg name="use_nav2_controller"
+         default="True"
+         description="Whether to use nav2 controller"/>
     <arg name="use_sim_time"
          default="False"
          description="Whether to use simulation time"/>

@@ -30,61 +30,92 @@ class PRMNode(LifecycleNode):
 
         # Declare parameters
         self.declare_parameter(
-            'robot_frame',
+            'robot_base_frame',
             'base_footprint',
             descriptor=ParameterDescriptor(
                 type=ParameterType.PARAMETER_STRING,
                 description='Robot frame ID'))
         self.declare_parameter(
-            'show_prm',
+            'prm/show',
             True,
             descriptor=ParameterDescriptor(
                 type=ParameterType.PARAMETER_BOOL,
                 description='Whether to publish the PRM graph for visualization'))
         self.declare_parameter(
-            'publish_every_n',
+            'prm/publish_every_n',
             20,
             descriptor=ParameterDescriptor(
                 type=ParameterType.PARAMETER_INTEGER,
                 description='Publish the PRM graph every n added points'))
         self.declare_parameter(
-            'connection_radius',
+            'prm/connection_radius',
             1.0,
             descriptor=ParameterDescriptor(
                 type=ParameterType.PARAMETER_DOUBLE,
                 description='Connection radius for the PRM'))
         self.declare_parameter(
-            'step_size',
+            'prm/step_size',
             0.01,
             descriptor=ParameterDescriptor(
                 type=ParameterType.PARAMETER_DOUBLE,
                 description='Step size for collision checking in the PRM'))
         self.declare_parameter(
-            'num_points',
+            'prm/num_points',
             1000,
             descriptor=ParameterDescriptor(
                 type=ParameterType.PARAMETER_INTEGER,
                 description='Number of points to sample in the PRM'))
 
+        # Costmap parameters
+        self.declare_parameter(
+            'costmap/tb3_model',
+            descriptor=ParameterDescriptor(
+                type=ParameterType.PARAMETER_STRING,
+                description='TurtleBot3 model type (burger, waffle, waffle_pi)'))
+        self.declare_parameter(
+            'costmap/occ_threshold',
+            50,
+            descriptor=ParameterDescriptor(
+                type=ParameterType.PARAMETER_INTEGER,
+                description='Occupancy threshold for binarizing the map'))
+        self.declare_parameter(
+            'costmap/always_send_full_costmap',
+            False,
+            descriptor=ParameterDescriptor(
+                type=ParameterType.PARAMETER_BOOL,
+                description='Whether to always send the full costmap on updates'))
+        self.declare_parameter(
+            'costmap/footprint_padding',
+            0.0,
+            descriptor=ParameterDescriptor(
+                type=ParameterType.PARAMETER_DOUBLE,
+                description='Padding to add to the robot footprint'))
+
     def on_configure(self, state: State) -> TransitionCallbackReturn:
         """Configure the node."""
         super().on_configure(state)
-        self.costmap_node.on_configure(state)
         self.get_logger().info(f'{self.get_name()}: Configuring...')
 
         # Robot parameters
-        self.robot_frame_id = self.get_parameter('robot_frame').value
+        self.robot_frame_id = self.get_parameter('robot_base_frame').value
         self.get_logger().info(f'Robot frame ID: {self.robot_frame_id}')
 
         # PRM
-        self.show_prm = self.get_parameter('show_prm').value
-        self.get_logger().info(f'Show PRM: {self.show_prm}')
         self.prm_params = {}
-        self.prm_params['num_points'] = self.get_parameter('num_points').value
-        self.prm_params['connection_radius'] = self.get_parameter('connection_radius').value
-        self.prm_params['step_size'] = self.get_parameter('step_size').value
-        self.prm_params['publish_every_n'] = self.get_parameter('publish_every_n').value
+        param_names = ['num_points', 'connection_radius',
+                       'step_size', 'publish_every_n']
+        for name in param_names:
+            self.prm_params[name] = self.get_parameter('prm/' + name).value
         self.get_logger().info(f'PRM parameters: {self.prm_params}')
+
+        costmap_params = {}
+        param_names = ['tb3_model', 'occ_threshold',
+                       'always_send_full_costmap', 'footprint_padding']
+        for name in param_names:
+            costmap_params[name] = self.get_parameter('costmap/' + name).value
+        self.get_logger().info(f'Costmap parameters: {costmap_params}')
+        self.costmap_node.set_costmap_parameters(**costmap_params)
+        self.costmap_node.on_configure(state)
 
         # Publishers and subscribers
         latching_qos = QoSProfile(
@@ -93,7 +124,7 @@ class PRMNode(LifecycleNode):
         self.marker_pub = self.create_publisher(
             MarkerArray,
             self.get_fully_qualified_name() + '/graph',
-            latching_qos) if self.show_prm else None
+            latching_qos) if self.get_parameter('prm/show').value else None
 
         self.tf_buffer = tf2_ros.Buffer()
         self.tf_listener = tf2_ros.TransformListener(self.tf_buffer, self)
@@ -109,7 +140,7 @@ class PRMNode(LifecycleNode):
 
         # Prepare PRM
         self.prm = PRM(
-            costmap=self.costmap_node.get_costmap(),
+            costmap=self.costmap_node.get_map(),
             clock=self.get_clock(),
             logger=self.get_logger(),
             publisher=self.marker_pub,
