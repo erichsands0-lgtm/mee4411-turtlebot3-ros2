@@ -55,25 +55,45 @@ class ICP2D:
 
         ##### YOUR CODE STARTS HERE ##### # noqa: E266
         # TODO Extract corresponding points from self.map_pts and store in the variable map
-        map = pts
+        map_pts = self.map_pts[:, indices]
 
         # Check to make sure you have the same number of points
-        assert pts.shape == map.shape
+        assert pts.shape == map_pts.shape
 
         # TODO Translate point sets (pts, map) to their centroids
         pass
+        
+        pts_centroid = np.mean(pts, axis=1, keepdims=True)   # 2x1
+        map_centroid = np.mean(map_pts, axis=1, keepdims=True)   # 2x1
+
+        pts_centered = pts - pts_centroid                    # 2xN
+        map_centered = map_pts - map_centroid                    # 2xN
+
 
         # TODO Use the SVD to find the rotation matrix using the np.linalg.svd function
         pass
 
+        H = pts_centered @ map_centered.T                    # 2x2
+        U, S, Vt = np.linalg.svd(H)                          # U:2
+        R = Vt.T @ U.T                                       # 2x2
+
         # TODO Make sure det(R) > 0, if not, multiply the last column of Vt by -1 and recalculate R
         pass
+
+        if np.linalg.det(R) < 0:
+            Vt[-1,:] *= -1
+            R = Vt.T @ U.T
+
 
         # TODO Find the translation vector using the formula to calculate the translation vector
         pass
 
+        t = map_centroid - R @ pts_centroid                 #2x1
+
         # TODO Fill in the homogeneous transformation
-        T = np.identity(3)
+        T = np.eye(3)
+        T[0:2, 0;2] = R
+        T[0:2, 2:3] = t
 
         ##### YOUR CODE ENDS HERE   ##### # noqa: E266
         error = np.mean(distances)
@@ -82,8 +102,8 @@ class ICP2D:
     def icp(self,
             pts: np.ndarray,
             init_pose: Optional[Union[np.array, None]] = None,
-            max_iterations: Optional[int] = 20,
-            tolerance: Optional[float] = 0.05) -> Tuple[np.ndarray, np.array, int]:
+            max_iterations: Optional[int] = 20, tolerance: Optional[float] = 0.05
+            ) -> Tuple[np.ndarray, np.array, int]:
         """
         Find the best-fit transform that maps points A on to points B using ICP.
 
@@ -107,11 +127,23 @@ class ICP2D:
 
         ##### YOUR CODE STARTS HERE ##### # noqa: E266
         # TODO Make points homogeneous, copy them to maintain the originals
+
+        n = pts.shape[1]
+        pts_h = np.vstack((pts, np.ones((1, n))))
+        src = pts_h.copy()
+
         # TODO See if there an initial pose estimate, if so then fill it in
         pass
+        if init_pose is not None:
+            T = init_pose.copy()
+        else:
+            T = np.eye(3)
+
 
         # TODO Apply the initial pose estimate to the points (pts)
         pass
+
+        src = T @ src
 
         # TODO Apply the initial pose estimate
         pass
@@ -121,10 +153,12 @@ class ICP2D:
         for i in range(max_iterations):
             # TODO Compute the TF between the current source and nearest destination points
             pass
-            mean_error = 0  # TODO replace this with the output of best_fit_transform
+            T_delta, mean_error = self.best_fit_transform(src[0:2, :])  # TODO replace this with the output of best_fit_transform
 
             # TODO Update the current estimated transofmration and point locations using T_delta
             pass
+            T = T_delta @ T
+            src = T_delta @ src
             ##### YOUR CODE ENDS HERE   ##### # noqa: E266
 
             # Check error
