@@ -1,8 +1,7 @@
 import rclpy
-from rclpy import ok
-from rclpy.duration import Duration
-from rclpy.executors import MultiThreadedExecutor
+import math
 from rclpy.node import Node
+from rclpy.duration import Duration
 from rclpy.qos import QoSProfile, QoSDurabilityPolicy
 from rclpy.time import Time
 from rcl_interfaces.msg import ParameterDescriptor, ParameterType
@@ -14,8 +13,6 @@ from geometry_msgs.msg import (
     Transform,
     TransformStamped
 )
-from lifecycle_msgs.msg import State as StateMsg
-from lifecycle_msgs.srv import GetState
 from sensor_msgs.msg import LaserScan
 from nav_msgs.msg import OccupancyGrid
 from nav_msgs.srv import GetMap
@@ -115,7 +112,7 @@ class ICPLocalizationNode(Node):
                 qos_profile=latching_qos)
         else:
             # Get map from map server
-            map_client = self.get_map_client()
+            map_client = self.create_client(GetMap, 'map_server/map')
             map_client.wait_for_service()
             self.get_clock().sleep_for(Duration(seconds=1.0))
             future = map_client.call_async(GetMap.Request())
@@ -156,31 +153,6 @@ class ICPLocalizationNode(Node):
         # Publish the initial transform
         self.publish_map_odom_tf(self.get_clock().now().to_msg())
 
-    def get_map_client(self):
-        """Ensure that the given lifecycle node is active."""
-        client = self.create_client(
-            GetState,
-            'map_server/get_state',)
-        while not client.wait_for_service(timeout_sec=1.0):
-            self.get_logger().info(
-                'Map Server not available, waiting...',
-                throttle_duration_sec=5.0
-            )
-        # Wait for the server to be active
-        while ok():
-            future = client.call_async(GetState.Request())
-            rclpy.spin_until_future_complete(self, future)
-            if future.result() is not None:
-                current_state = future.result().current_state
-                if current_state.id == StateMsg.PRIMARY_STATE_ACTIVE:
-                    break
-            self.get_logger().warning(
-                'Map Server not ready, waiting...',
-                throttle_duration_sec=5.0
-            )
-        self.get_logger().info('Map server is active!')
-        return self.create_client(GetMap, '/map_server/map')
-
     def initialize_icp(self, map: OccupancyGrid) -> None:
         """
         Initialize the ICP algorithm with the given map.
@@ -204,10 +176,15 @@ class ICPLocalizationNode(Node):
 
         ##### YOUR CODE STARTS HERE ##### # noqa: E266
         # TODO Extract the locations of all objects in the map
-        pass
+        occ_xy = self.ogm.where_occupied(format='xy')
 
+        if occ_xy.size == 0:
+            self.get_logger().warning('map has no occupied cells for ICP')
+            return
         # TODO use those points to inialize the ICP using the set_map_points method
-        pass
+        map_pts = occ_xy.T
+
+        self.icp.set_map_points(map_pts)
         ##### YOUR CODE ENDS HERE   ##### # noqa: E266
 
     def map_callback(self, msg: OccupancyGrid) -> None:
@@ -220,7 +197,7 @@ class ICPLocalizationNode(Node):
             None
         """
         with self.lock:
-            self.ogm = OccupancyGridMap(msg)
+            self.ogm = OccupancyGridMap.from_msg(msg)
             self.have_map = True
             self.initialize_icp(msg)
 
@@ -241,10 +218,22 @@ class ICPLocalizationNode(Node):
         """
         ##### YOUR CODE STARTS HERE ##### # noqa: E266
         # TODO Fill in the current time
-        pass
-
+        self.tf_map_odom.header.stamp = time
         # TODO Fill in the current transform (using the x, y, theta in self.pose)
-        pass
+        x, y, theta = self.pose
+
+        self.tf_map_odom.transform.translation.x = float(x)
+        self.tf_map_odom.transform.translation.y = float(y)
+        self.tf_map_odom.transform.translation.z = 0.0
+
+        half = theta / 2.0
+        qz = math.sin(half)
+        qw = math.cos(half)
+
+        self.tf_map_odom.transform.rotation.x = 0.0
+        self.tf_map_odom.transform.rotation.y = 0.0
+        self.tf_map_odom.transform.rotation.z = float(qz)
+        self.tf_map_odom.transform.rotation.w = float(qw)
         ##### YOUR CODE ENDS HERE   ##### # noqa: E266
 
         # Publish the transform
@@ -268,11 +257,21 @@ class ICPLocalizationNode(Node):
         # Initialize covariance to reasonable values
         pose_msg.pose.covariance = np.diag((0.1, 0.1, 0.0, 0.0, 0.0, 0.2)).flatten().tolist()
         ##### YOUR CODE STARTS HERE ##### # noqa: E266
+        x, y, theta = self.pose
         # TODO Fill in the pose message
-        pass
+        pose_msg.pose.pose.position.x = float(x)
+        pose_msg.pose.pose.position.y = float(y)
+        pose_msg.pose.pose.position.z = 0.0
 
+        half = theta / 2.0
+        qz = math.sin(half)
+        qw = math.cos(half)
+        pose_msg.pose.pose.orientation.x = 0.0
+        pose_msg.pose.pose.orientation.y = 0.0
+        pose_msg.pose.pose.orientation.z = float(qz)
+        pose_msg.pose.pose.orientation.w = float(qw)
         # TODO Publish the message using self.pose_pub
-        pass
+        self.pose_pub.publish(pose_msg)
         ##### YOUR CODE ENDS HERE   ##### # noqa: E266
 
     def initialpose_callback(self, msg: PoseWithCovarianceStamped) -> None:
@@ -301,7 +300,6 @@ class ICPLocalizationNode(Node):
             3. Update self.pose with the new pose
         """
         # Make sure the node is ready
-        t_start = self.get_clock().now()
         with self.lock:
             if self.sensor_frame_id is None:
                 self.sensor_frame_id = msg.header.frame_id
@@ -317,21 +315,69 @@ class ICPLocalizationNode(Node):
         ##### YOUR CODE STARTS HERE ##### # noqa: E266
         # TODO Convert lidar all points to (x,y)
         # NOTE You should only keep points that are between the minimum and maximum range
-        pass
+        ranges = np.array(msg.ranges)
+        angles = msg.angle_min + np.arange(len(ranges)) * msg.angle_increment
 
+        valid = np.logical_and(ranges > msg.range_min, ranges < msg.range_max)
+        ranges = ranges[valid]
+        angles = angles[valid]
+
+        xs = ranges * np.cos(angles)
+        ys = ranges * np.sin(angles)
+        scan_pts_sensor = np.vstack((xs, ys))
         # TODO Lookup transformation from odom to lidar coordiante frame
-        pass
+        lookup_time = Time.from_msg(msg.header.stamp) - self.tf_time_travel
+        tf_odom_sensor = self.tf_buffer.lookup_transform(
+            self.tf_map_odom.child_frame_id,
+            self.sensor_frame_id,
+            lookup_time
+        )
 
+        tx = tf_odom_sensor.transform.translation.x
+        ty = tf_odom_sensor.transform.translation.y
+        rot = tf_odom_sensor.transform.rotation
+
+        yaw = math.atan2(
+            2.0 * (rot.w * rot.z),
+            1.0 - 2.0 * (rot.z * rot.z))
+        
+        c = math.cos(yaw)
+        s = math.sin(yaw)
+        T_odom_sensor = np.array([
+            [c, -s, tx],
+            [s,  c, ty],
+            [0.0,  0.0,  1.0]
+        ])
+        
         # TODO Use the transformation to transform the lidar points into the odom coordinate frame
-        pass
+
+        scan_h_sensor = np.vstack((scan_pts_sensor, 
+                                   np.ones((1, scan_pts_sensor.shape[1]))))
+        scan_h_odom = T_odom_sensor @ scan_h_sensor
+        scan_pts_odom = scan_h_odom[0:2, :]
 
         # TODO Use ICP to find pose of odom with respect to the map
         with self.lock:
             # NOTE need to do this inside of the lock to ensure correct operation
-            pass
+            x, y, theta = self.pose
+            c = math.cos(theta)
+            s = math.sin(theta)
+            T_init = np.array([
+                [c, -s, x],
+                [s,  c, y],
+                [0.0,  0.0,  1.0]
+            ])
 
+            T_map_odom, mean_error, _ = self.icp.icp(
+                scan_pts_odom,
+                init_pose=T_init,
+                tolerance=self.tolerance
+            )
         # TODO Update self.pose using the transformation found by ICP
-        pass
+        x_new = T_map_odom[0, 2]
+        y_new = T_map_odom[1, 2]
+        theta_new = math.atan2(T_map_odom[1,0], T_map_odom[0, 0])
+        self.pose = [x_new, y_new, theta_new]
         ##### YOUR CODE ENDS HERE   ##### # noqa: E266
 
         # Publish transform
@@ -346,20 +392,12 @@ def main(args=None):
     # Create the node
     icp_node = ICPLocalizationNode()
 
-    # Create a multi-threaded executor
-    executor = MultiThreadedExecutor()
-    executor.add_node(icp_node)
+    # Let the node run until it is killed
+    rclpy.spin(icp_node)
 
-    try:
-        # Spin the executor to process callbacks from all added nodes
-        executor.spin()
-    except KeyboardInterrupt:
-        pass
-    finally:
-        # Shutdown and destroy nodes
-        executor.shutdown()
-        icp_node.destroy_node()
-        rclpy.shutdown()
+    # Clean up the node and stop ROS2
+    icp_node.destroy_node()
+    rclpy.shutdown()
 
 
 if __name__ == '__main__':
